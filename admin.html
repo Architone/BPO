@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BPO — Back-office fabricants</title>
+<style>
+  :root{--bg:#1a1d23;--pn:#20242c;--p2:#262b34;--ln:#343a45;--tx:#e8e9ec;--dm:#8b92a0;--am:#ff8a3d;--cy:#5eb8ff;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;line-height:1.5;}
+  header{padding:16px 22px;background:var(--pn);border-bottom:1px solid var(--ln);}
+  header h1{margin:0;font-size:18px;font-weight:600;}
+  header .sub{font-size:12px;color:var(--dm);}
+  main{max-width:1000px;margin:0 auto;padding:20px;display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .card{background:var(--pn);border:1px solid var(--ln);border-radius:10px;padding:16px;}
+  .card h2{margin:0 0 10px;font-size:14px;color:var(--cy);font-weight:600;}
+  .full{grid-column:1/3;}
+  .drop{border:2px dashed var(--ln);border-radius:10px;padding:26px;text-align:center;color:var(--dm);cursor:pointer;transition:.2s;}
+  .drop.hi{border-color:var(--am);color:var(--tx);background:rgba(255,138,61,.06);}
+  .drop b{color:var(--tx);}
+  .files{font-size:12px;color:var(--dm);margin-top:10px;font-family:monospace;max-height:120px;overflow:auto;}
+  button{background:var(--p2);border:1px solid var(--ln);color:var(--tx);border-radius:6px;padding:9px 14px;font-size:13px;cursor:pointer;}
+  button.primary{border-color:var(--am);color:var(--am);background:rgba(255,138,61,.1);}
+  button:disabled{opacity:.4;cursor:not-allowed;}
+  label{display:block;font-size:11px;color:var(--dm);margin:8px 0 3px;text-transform:uppercase;letter-spacing:.06em;}
+  input,select,textarea{width:100%;background:var(--p2);border:1px solid var(--ln);color:var(--tx);border-radius:6px;padding:8px;font-size:13px;font-family:inherit;}
+  .stats{font-family:monospace;font-size:12px;color:var(--dm);white-space:pre-wrap;}
+  .stats b{color:var(--tx);}
+  #pv{width:100%;height:300px;background:#11141a;border-radius:8px;display:block;touch-action:none;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .msg{font-size:12px;padding:8px 10px;border-radius:6px;margin-top:8px;}
+  .msg.err{background:rgba(255,80,80,.12);color:#ff9a9a;}
+  .msg.ok{background:rgba(94,184,255,.12);color:var(--cy);}
+  ol.steps{font-size:13px;color:var(--dm);margin:6px 0 0;padding-left:20px;}
+  code{background:var(--p2);padding:1px 5px;border-radius:4px;font-size:12px;}
+  a{color:var(--cy);}
+</style>
+</head>
+<body>
+<header>
+  <h1>Building Product Objects — Back-office fabricants</h1>
+  <div class="sub">Importer un objet fabricant (DAE + textures) → données prêtes à committer.</div>
+</header>
+<main>
+  <div class="card full">
+    <h2>1 · Déposer le modèle</h2>
+    <div id="drop" class="drop">
+      <b>Glisse ici</b> le fichier <b>.dae</b> et ses <b>images de texture</b> (.png/.jpg)<br>
+      <span style="font-size:12px">— ou clique pour choisir les fichiers —</span>
+      <input id="file" type="file" multiple accept=".dae,image/*" style="display:none">
+    </div>
+    <div id="files" class="files"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="convert" class="primary" disabled>Convertir →</button>
+      <span id="busy" style="color:var(--dm);font-size:12px"></span>
+    </div>
+    <div id="cmsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>2 · Aperçu 3D</h2>
+    <canvas id="pv"></canvas>
+    <div class="stats" id="stats">—</div>
+  </div>
+
+  <div class="card">
+    <h2>3 · Fiche produit</h2>
+    <label>Fabricant</label>
+    <select id="maker"></select>
+    <input id="makerNew" placeholder="…ou nouveau fabricant" style="margin-top:6px;display:none">
+    <label>Identifiant produit (sans espaces, unique)</label>
+    <input id="pid" placeholder="ex: chaise_aero">
+    <label>Nom affiché</label>
+    <input id="plabel" placeholder="ex: Chaise Aero">
+    <label>Catégorie</label>
+    <input id="pcat" placeholder="ex: assise">
+    <label>Description</label>
+    <textarea id="pdesc" rows="2" placeholder="courte description"></textarea>
+  </div>
+
+  <div class="card full">
+    <h2>4 · Générer les fichiers à committer</h2>
+    <div class="row">
+      <button id="add" disabled>Ajouter au catalogue</button>
+      <button id="dlObj" disabled>⬇ data/textured-objects.js</button>
+      <button id="dlFab" disabled>⬇ data/fabricants.js</button>
+    </div>
+    <div id="amsg"></div>
+    <ol class="steps">
+      <li>Remplace les deux fichiers téléchargés dans le dossier <code>data/</code> de ton dépôt.</li>
+      <li>Commit + push (ou glisser-déposer sur GitHub).</li>
+      <li>Le nouvel objet apparaît dans le configurateur, onglet <b>Fabricants</b>.</li>
+    </ol>
+  </div>
+</main>
+
+<script src="data/textured-objects.js"></script>
+<script src="data/fabricants.js"></script>
+<script>
+"use strict";
+/* =========================================================================
+   Convertisseur DAE -> format texturé interne (identique à TEX_OBJECTS).
+   ========================================================================= */
+function cl255(x){ return Math.max(0,Math.min(255,Math.round(x))); }
+function ident4(){ return [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; }
+function mul4(a,b){ var o=new Array(16); for(var r=0;r<4;r++)for(var c=0;c<4;c++){var s=0;for(var k=0;k<4;k++)s+=a[r*4+k]*b[k*4+c];o[r*4+c]=s;} return o; }
+function applyM(m,p){ return [ m[0]*p[0]+m[1]*p[1]+m[2]*p[2]+m[3], m[4]*p[0]+m[5]*p[1]+m[6]*p[2]+m[7], m[8]*p[0]+m[9]*p[1]+m[10]*p[2]+m[11] ]; }
+function applyM3(m,n){ return [ m[0]*n[0]+m[1]*n[1]+m[2]*n[2], m[4]*n[0]+m[5]*n[1]+m[6]*n[2], m[8]*n[0]+m[9]*n[1]+m[10]*n[2] ]; }
+function transMat(t){ return [1,0,0,t[0], 0,1,0,t[1], 0,0,1,t[2], 0,0,0,1]; }
+function scaleMat(s){ return [s[0],0,0,0, 0,s[1],0,0, 0,0,s[2],0, 0,0,0,1]; }
+function rotMat(v){ var x=v[0],y=v[1],z=v[2],a=v[3]*Math.PI/180,c=Math.cos(a),s=Math.sin(a),t=1-c;
+  var l=Math.hypot(x,y,z)||1; x/=l;y/=l;z/=l;
+  return [t*x*x+c, t*x*y-s*z, t*x*z+s*y, 0,  t*x*y+s*z, t*y*y+c, t*y*z-s*x, 0,  t*x*z-s*y, t*y*z+s*x, t*z*z+c, 0,  0,0,0,1]; }
+
+function parseDAE(xmlText){
+  var doc=new DOMParser().parseFromString(xmlText,'application/xml');
+  if(doc.getElementsByTagName('parsererror').length) throw new Error('Fichier DAE illisible (XML invalide).');
+  function T(root,name){ return Array.prototype.slice.call(root.getElementsByTagNameNS('*',name)); }
+  function attr(e,a){ return e.getAttribute(a); }
+  var unitEl=T(doc,'unit')[0]; var meter=unitEl?parseFloat(attr(unitEl,'meter')||'1'):1;
+  var upEl=T(doc,'up_axis')[0]; var up=upEl?(upEl.textContent||'Y_UP').trim():'Y_UP';
+  var imgFile={}; T(doc,'image').forEach(function(im){ var i=T(im,'init_from')[0]; if(i){ imgFile[attr(im,'id')]=(i.textContent||'').trim().replace(/\\/g,'/').split('/').pop(); } });
+  var effects={}; T(doc,'effect').forEach(function(ef){
+    var surf={},samp={};
+    T(ef,'newparam').forEach(function(np){ var sid=attr(np,'sid');
+      var sf=T(np,'surface')[0]; if(sf){ var inf=T(sf,'init_from')[0]; surf[sid]=inf?(inf.textContent||'').trim():''; }
+      var s2=T(np,'sampler2D')[0]; if(s2){ var sr=T(s2,'source')[0]; samp[sid]=sr?(sr.textContent||'').trim():''; } });
+    var tex=null,col=[200,200,200];
+    var sh=T(ef,'phong')[0]||T(ef,'lambert')[0]||T(ef,'blinn')[0];
+    if(sh){ var dif=T(sh,'diffuse')[0]; if(dif){
+      var tx=T(dif,'texture')[0]; if(tx){ var sn=attr(tx,'texture'); var im=surf[samp[sn]]||samp[sn]; if(imgFile[im]) tex=imgFile[im]; }
+      var c=T(dif,'color')[0]; if(c){ var v=(c.textContent||'').trim().split(/\s+/).map(Number); col=[cl255(v[0]*255),cl255(v[1]*255),cl255(v[2]*255)]; } } }
+    effects[attr(ef,'id')]={tex:tex,col:col};
+  });
+  var matEff={}; T(doc,'material').forEach(function(m){ var ie=T(m,'instance_effect')[0]; matEff[attr(m,'id')]=(attr(ie,'url')||'').replace('#',''); });
+  var geos={}; T(doc,'geometry').forEach(function(g){ geos[attr(g,'id')]=g; });
+
+  function srcFloats(mesh){ var src={}; T(mesh,'source').forEach(function(so){ var fa=T(so,'float_array')[0]; if(!fa)return; var arr=(fa.textContent||'').trim().split(/\s+/).map(Number); var acc=T(so,'accessor')[0]; var st=acc?parseInt(attr(acc,'stride')||'1',10):1; src[attr(so,'id')]={arr:arr,stride:st}; }); return src; }
+  var geoCache={};
+  function parseGeo(g){
+    var id=attr(g,'id'); if(geoCache[id]) return geoCache[id];
+    var mesh=T(g,'mesh')[0]; if(!mesh){ geoCache[id]=[]; return []; }
+    var src=srcFloats(mesh);
+    var vmap={}; T(mesh,'vertices').forEach(function(v){ var pin=null; T(v,'input').forEach(function(inp){ if(attr(inp,'semantic')==='POSITION') pin=(attr(inp,'source')||'').replace('#',''); }); vmap[attr(v,'id')]=pin; });
+    var prims=[];
+    function handle(pr,isPoly){
+      var matsym=attr(pr,'material');
+      var offs={},maxoff=0,ssem={};
+      T(pr,'input').forEach(function(inp){ var sem=attr(inp,'semantic'),off=parseInt(attr(inp,'offset')||'0',10),so=(attr(inp,'source')||'').replace('#','');
+        maxoff=Math.max(maxoff,off);
+        if(sem==='VERTEX'){ ssem.POS=vmap[so]||so; offs.POS=off; }
+        else if(sem==='NORMAL'){ ssem.NRM=so; offs.NRM=off; }
+        else if(sem==='TEXCOORD' && offs.UV===undefined){ ssem.UV=so; offs.UV=off; } });
+      var stride=maxoff+1;
+      var pEl=T(pr,'p')[0]; if(!pEl) return;
+      var p=(pEl.textContent||'').trim().split(/\s+/).map(Number);
+      var psrc=src[ssem.POS],nsrc=src[ssem.NRM],usrc=src[ssem.UV];
+      if(!psrc) return;
+      var faces=[];
+      if(isPoly){ var vc=(T(pr,'vcount')[0].textContent||'').trim().split(/\s+/).map(Number); var ptr=0;
+        vc.forEach(function(cnt){ var poly=[]; for(var k=0;k<cnt;k++){poly.push(ptr++);} for(var k2=1;k2<cnt-1;k2++) faces.push([poly[0],poly[k2],poly[k2+1]]); }); }
+      else { var cnt=parseInt(attr(pr,'count')||'0',10); for(var t=0;t<cnt;t++) faces.push([t*3,t*3+1,t*3+2]); }
+      faces.forEach(function(f){ var tri=[];
+        for(var ci=0;ci<3;ci++){ var corner=f[ci], b=corner*stride;
+          var pi=p[b+offs.POS]; var P=[psrc.arr[pi*psrc.stride],psrc.arr[pi*psrc.stride+1],psrc.arr[pi*psrc.stride+2]];
+          var N=[0,0,1]; if(nsrc&&offs.NRM!==undefined){ var ni=p[b+offs.NRM]; N=[nsrc.arr[ni*nsrc.stride],nsrc.arr[ni*nsrc.stride+1],nsrc.arr[ni*nsrc.stride+2]]; }
+          var U=[0,0]; if(usrc&&offs.UV!==undefined){ var ui=p[b+offs.UV]; U=[usrc.arr[ui*usrc.stride],usrc.arr[ui*usrc.stride+1]]; }
+          tri.push({p:P,n:N,uv:U}); }
+        prims.push({mat:matsym,tri:tri}); });
+    }
+    T(mesh,'triangles').forEach(function(pr){ handle(pr,false); });
+    T(mesh,'polylist').forEach(function(pr){ handle(pr,true); });
+    geoCache[id]=prims; return prims;
+  }
+  /* parcours de scène (enfants directs), transforms cumulés */
+  var groups={}; var ninst=0;
+  function getG(mid){ if(!groups[mid]) groups[mid]={key:{},pos:[],nrm:[],uv:[],idx:[]}; return groups[mid]; }
+  function localMat(node){ var m=ident4();
+    for(var ch=node.firstElementChild; ch; ch=ch.nextElementSibling){ var ln=ch.localName;
+      var v=(ch.textContent||'').trim().split(/\s+/).map(Number);
+      if(ln==='matrix') m=mul4(m,v);
+      else if(ln==='translate') m=mul4(m,transMat(v));
+      else if(ln==='rotate') m=mul4(m,rotMat(v));
+      else if(ln==='scale') m=mul4(m,scaleMat(v)); }
+    return m; }
+  function emit(prims, mid, M){
+    var g=getG(mid), km=g.key;
+    prims.forEach(function(pm){ pm.tri.forEach(function(c){
+      var wp=applyM(M,c.p); wp=[wp[0]*meter,wp[1]*meter,wp[2]*meter];
+      var wn=applyM3(M,c.n);
+      if(up==='Z_UP'){ wp=[wp[0],wp[2],-wp[1]]; wn=[wn[0],wn[2],-wn[1]]; }
+      var nl=Math.hypot(wn[0],wn[1],wn[2])||1; wn=[wn[0]/nl,wn[1]/nl,wn[2]/nl];
+      var u=c.uv[0],vv=c.uv[1];
+      var key=Math.round(wp[0]*1e4)+'_'+Math.round(wp[1]*1e4)+'_'+Math.round(wp[2]*1e4)+'_'+Math.round(wn[0]*100)+'_'+Math.round(wn[1]*100)+'_'+Math.round(wn[2]*100)+'_'+Math.round(u*1e4)+'_'+Math.round(vv*1e4);
+      var idx=km[key];
+      if(idx===undefined){ idx=g.pos.length/3; km[key]=idx; g.pos.push(wp[0],wp[1],wp[2]); g.nrm.push(wn[0],wn[1],wn[2]); g.uv.push(u,vv); }
+      g.idx.push(idx);
+    }); });
+  }
+  function walk(node, parentM){
+    var M=mul4(parentM, localMat(node));
+    for(var ch=node.firstElementChild; ch; ch=ch.nextElementSibling){
+      if(ch.localName==='instance_geometry'){
+        var gid=(attr(ch,'url')||'').replace('#',''); var g=geos[gid]; if(!g) continue;
+        var matid=null, im=ch.getElementsByTagNameNS('*','instance_material')[0]; if(im) matid=(attr(im,'target')||'').replace('#','');
+        if(!matid) matid='__default'; ninst++;
+        emit(parseGeo(g), matid, M);
+      } else if(ch.localName==='node'){ walk(ch, M); }
+    }
+  }
+  var scenes=T(doc,'visual_scene'); scenes.forEach(function(sc){ for(var ch=sc.firstElementChild;ch;ch=ch.nextElementSibling){ if(ch.localName==='node') walk(ch, ident4()); } });
+
+  return {groups:groups, effects:effects, matEff:matEff, ninst:ninst, up:up, meter:meter, imgFile:imgFile};
+}
+
+/* assemble géométrie globale + groupes + centrage + quantification */
+function buildMesh(parsed){
+  var POS=[],NRM=[],UV=[],IDX=[],GMETA=[];
+  Object.keys(parsed.groups).forEach(function(mid){ var grp=parsed.groups[mid];
+    if(grp.pos.length===0) return;
+    var base=POS.length/3, start=IDX.length;
+    POS=POS.concat(grp.pos); NRM=NRM.concat(grp.nrm); UV=UV.concat(grp.uv);
+    for(var i=0;i<grp.idx.length;i++) IDX.push(base+grp.idx[i]);
+    var eff=parsed.effects[parsed.matEff[mid]]||{tex:null,col:[200,200,200]};
+    GMETA.push({tex:eff.tex,col:eff.col,start:start,count:grp.idx.length});
+  });
+  var nv=POS.length/3, nf=IDX.length/3;
+  if(nv===0) throw new Error('Aucune géométrie exploitable trouvée dans le DAE.');
+  var xs=[],ys=[],zs=[]; for(var i=0;i<nv;i++){ xs.push(POS[i*3]); ys.push(POS[i*3+1]); zs.push(POS[i*3+2]); }
+  var minx=Math.min.apply(0,xs),maxx=Math.max.apply(0,xs),miny=Math.min.apply(0,ys),maxy=Math.max.apply(0,ys),minz=Math.min.apply(0,zs),maxz=Math.max.apply(0,zs);
+  var cx=(minx+maxx)/2, cz=(minz+maxz)/2;
+  for(var i=0;i<nv;i++){ POS[i*3]-=cx; POS[i*3+1]-=miny; POS[i*3+2]-=cz; }
+  var bb=[minx-cx,0,minz-cz,maxx-cx,maxy-miny,maxz-cz];
+  var dim=[+(maxx-minx).toFixed(3),+(maxy-miny).toFixed(3),+(maxz-minz).toFixed(3)];
+  return {POS:POS,NRM:NRM,UV:UV,IDX:IDX,GMETA:GMETA,nv:nv,nf:nf,bb:bb,dim:dim};
+}
+function packMesh(m){
+  var nv=m.nv, bb=m.bb;
+  function q(v,lo,hi){ if(hi<=lo) return 0; return Math.max(0,Math.min(65535,Math.round((v-lo)/(hi-lo)*65535))); }
+  var posb=new Uint8Array(nv*6); var dv=new DataView(posb.buffer);
+  for(var i=0;i<nv;i++){ dv.setUint16(i*6,q(m.POS[i*3],bb[0],bb[3]),true); dv.setUint16(i*6+2,q(m.POS[i*3+1],bb[1],bb[4]),true); dv.setUint16(i*6+4,q(m.POS[i*3+2],bb[2],bb[5]),true); }
+  var nrmb=new Int8Array(nv*3); for(var i=0;i<nv*3;i++) nrmb[i]=Math.max(-127,Math.min(127,Math.round(m.NRM[i]*127)));
+  var uvb=new Uint8Array(nv*8); var uvv=new DataView(uvb.buffer); for(var i=0;i<nv*2;i++) uvv.setFloat32(i*4,m.UV[i],true);
+  var idxb=new Uint8Array(m.IDX.length*4); var iv=new DataView(idxb.buffer); for(var i=0;i<m.IDX.length;i++) iv.setUint32(i*4,m.IDX[i],true);
+  var meta={nv:nv,nf:m.nf,bb:bb.map(function(x){return +x.toFixed(5);}),dim:m.dim,plen:posb.length,nlen:nrmb.length,uvlen:uvb.length,ilen:idxb.length};
+  var raw=new Uint8Array(posb.length+nrmb.length+uvb.length+idxb.length); var o=0;
+  raw.set(posb,o);o+=posb.length; raw.set(new Uint8Array(nrmb.buffer),o);o+=nrmb.length; raw.set(uvb,o);o+=uvb.length; raw.set(idxb,o);
+  var groups=m.GMETA.map(function(g){return {tex:g.tex?('t_'+g.tex.replace(/[^a-zA-Z0-9]/g,'_')):null,col:g.col,start:g.start,count:g.count};});
+  return {meta:meta,raw:raw,groups:groups};
+}
+async function gzipB64(u8){
+  var cs=new CompressionStream('gzip');
+  var ab=await new Response(new Blob([u8]).stream().pipeThrough(cs)).arrayBuffer();
+  var b=new Uint8Array(ab), s=''; for(var i=0;i<b.length;i+=8192) s+=String.fromCharCode.apply(null,b.subarray(i,i+8192));
+  return btoa(s);
+}
+/* texture -> POT <=512 -> dataURI base64 */
+function nextPOT(n){ var p=1; while(p<n)p*=2; return Math.min(p,512); }
+function texToDataURI(file){ return new Promise(function(res,rej){
+  var img=new Image(); img.onload=function(){ var tw=nextPOT(img.width),th=nextPOT(img.height);
+    var cv=document.createElement('canvas'); cv.width=tw;cv.height=th; cv.getContext('2d').drawImage(img,0,0,tw,th);
+    res(cv.toDataURL('image/png')); };
+  img.onerror=function(){ rej(new Error('image illisible: '+file.name)); };
+  img.src=URL.createObjectURL(file);
+}); }
+
+/* =========================================================================
+   État + UI
+   ========================================================================= */
+var DAE_TEXT=null, TEX_FILES={}, RESULT=null;
+var dropEl=document.getElementById('drop'), fileInput=document.getElementById('file'), filesEl=document.getElementById('files');
+function refreshFiles(){ var l=[]; if(DAE_TEXT) l.push('• modèle .dae ('+(DAE_TEXT.length/1024|0)+' Ko)'); Object.keys(TEX_FILES).forEach(function(n){ l.push('• '+n); }); filesEl.textContent=l.join('\n')||'(aucun fichier)'; document.getElementById('convert').disabled=!DAE_TEXT; }
+function takeFiles(list){ Array.prototype.forEach.call(list,function(f){ var n=f.name.toLowerCase();
+  if(n.endsWith('.dae')){ var r=new FileReader(); r.onload=function(e){ DAE_TEXT=e.target.result; refreshFiles(); }; r.readAsText(f); }
+  else if(f.type.indexOf('image')===0||/\.(png|jpg|jpeg)$/i.test(n)){ TEX_FILES[f.name]=f; refreshFiles(); } }); }
+dropEl.onclick=function(){ fileInput.click(); };
+fileInput.onchange=function(e){ takeFiles(e.target.files); };
+['dragover','dragenter'].forEach(function(ev){ dropEl.addEventListener(ev,function(e){ e.preventDefault(); dropEl.classList.add('hi'); }); });
+['dragleave','drop'].forEach(function(ev){ dropEl.addEventListener(ev,function(e){ e.preventDefault(); dropEl.classList.remove('hi'); }); });
+dropEl.addEventListener('drop',function(e){ takeFiles(e.dataTransfer.files); });
+
+function msg(el,txt,kind){ document.getElementById(el).innerHTML='<div class="msg '+(kind||'ok')+'">'+txt+'</div>'; }
+
+document.getElementById('convert').onclick=async function(){
+  try{
+    document.getElementById('cmsg').innerHTML=''; document.getElementById('busy').textContent='Conversion…';
+    var parsed=parseDAE(DAE_TEXT);
+    var mesh=buildMesh(parsed);
+    var packed=packMesh(mesh);
+    /* textures utilisées -> dataURI */
+    var tex={}, missing=[];
+    var used={}; packed.groups.forEach(function(g){ if(g.tex){ used[g.tex]=mesh.GMETA[0]; } });
+    // map clé tex -> nom fichier original
+    var keyToName={}; mesh.GMETA.forEach(function(g){ if(g.tex){ keyToName['t_'+g.tex.replace(/[^a-zA-Z0-9]/g,'_')]=g.tex; } });
+    for(var k in used){ var fn=keyToName[k];
+      var file=TEX_FILES[fn]; if(!file){ /* essai insensible à la casse */ var lk=Object.keys(TEX_FILES).filter(function(x){return x.toLowerCase()===String(fn).toLowerCase();})[0]; if(lk) file=TEX_FILES[lk]; }
+      if(!file){ missing.push(fn); continue; }
+      tex[k]=await texToDataURI(file);
+    }
+    var geo=await gzipB64(packed.raw);
+    RESULT={ meta:packed.meta, groups:packed.groups, geo:geo, tex:tex, _dim:mesh.dim, _missing:missing };
+    var st='Sommets: <b>'+mesh.nv+'</b>\nTriangles: <b>'+mesh.nf+'</b>\nMatériaux/groupes: <b>'+packed.groups.length+'</b>\nTextures: <b>'+Object.keys(tex).length+'</b>'+(missing.length?(' (manquantes: '+missing.join(', ')+')'):'')+'\nDimensions (m): <b>'+mesh.dim.join(' × ')+'</b>\nUp-axis: '+parsed.up+' · unité: '+parsed.meter+' m\nDonnées gzip: <b>'+(geo.length/1024|0)+' Ko</b>';
+    document.getElementById('stats').innerHTML=st;
+    if(missing.length) msg('cmsg','Conversion OK, mais '+missing.length+' texture(s) manquante(s) — dépose-les puis reconvertis. Aperçu avec couleurs de repli.','err');
+    else msg('cmsg','Conversion réussie. Vérifie l’aperçu et les dimensions ci-dessus.','ok');
+    previewLoad(RESULT);
+    document.getElementById('add').disabled=false;
+    autofill();
+  }catch(e){ msg('cmsg','Erreur : '+e.message,'err'); console.error(e); }
+  document.getElementById('busy').textContent='';
+};
+function autofill(){ var pid=document.getElementById('pid'); if(!pid.value){ pid.value=(document.querySelector('input#file')?'':'')+'objet_'+Date.now().toString(36).slice(-4); } }
+
+/* fabricant select */
+var FAB = (typeof FABRICANTS_DB!=='undefined') ? JSON.parse(JSON.stringify(FABRICANTS_DB)) : [];
+var TEXO = (typeof TEX_OBJECTS!=='undefined') ? TEX_OBJECTS : {};
+(function fillMakers(){ var sel=document.getElementById('maker'); FAB.forEach(function(f){ var o=document.createElement('option'); o.value=f.id; o.textContent=f.label; sel.appendChild(o); }); var o=document.createElement('option'); o.value='__new'; o.textContent='+ Nouveau fabricant…'; sel.appendChild(o);
+  sel.onchange=function(){ document.getElementById('makerNew').style.display = sel.value==='__new'?'block':'none'; }; })();
+
+/* Ajouter au catalogue (en mémoire) */
+document.getElementById('add').onclick=function(){
+  try{
+    if(!RESULT) throw new Error('Convertis d’abord un modèle.');
+    var pid=document.getElementById('pid').value.trim().replace(/\s+/g,'_');
+    var plabel=document.getElementById('plabel').value.trim()||pid;
+    if(!pid) throw new Error('Donne un identifiant produit.');
+    if(TEXO[pid]) throw new Error('Identifiant déjà utilisé : '+pid);
+    var makerSel=document.getElementById('maker').value, maker;
+    if(makerSel==='__new'){ var nm=document.getElementById('makerNew').value.trim(); if(!nm) throw new Error('Nom du nouveau fabricant ?');
+      var mid=nm.toLowerCase().replace(/[^a-z0-9]+/g,'_'); maker={id:mid,label:nm,status:'ready',subs:[]}; FAB.push(maker); }
+    else { maker=FAB.filter(function(f){return f.id===makerSel;})[0]; if(!maker.subs){maker.subs=[];} maker.status='ready'; }
+    /* objet texturé */
+    TEXO[pid]={meta:RESULT.meta,groups:RESULT.groups,geo:RESULT.geo,tex:RESULT.tex};
+    /* entrée catalogue */
+    maker.subs.push({ id:pid, label:plabel, render:'webgl-tex', data:'TEX_OBJECTS.'+pid, categorie:document.getElementById('pcat').value.trim()||'objet', description:document.getElementById('pdesc').value.trim()||'' });
+    msg('amsg','Ajouté : <b>'+plabel+'</b> chez <b>'+maker.label+'</b>. Télécharge les deux fichiers ci-dessous.','ok');
+    document.getElementById('dlObj').disabled=false; document.getElementById('dlFab').disabled=false;
+    document.getElementById('add').disabled=true;
+  }catch(e){ msg('amsg','Erreur : '+e.message,'err'); }
+};
+function download(name, text){ var b=new Blob([text],{type:'text/javascript'}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); }
+document.getElementById('dlObj').onclick=function(){ download('textured-objects.js','/* Objets texturés (registre TEX_OBJECTS) — généré par le back-office */\nvar TEX_OBJECTS='+JSON.stringify(TEXO)+';\n'); };
+document.getElementById('dlFab').onclick=function(){ download('fabricants.js','/* Base de données fabricants — généré par le back-office */\nvar FABRICANTS_DB='+JSON.stringify(FAB,null,2)+';\n'); };
+
+/* =========================================================================
+   Aperçu WebGL texturé (même moteur que l'app)
+   ========================================================================= */
+var PV={gl:null,prog:null,cam:{th:0.7,ph:1.05,r:4,ty:0.5},buf:{},txt:{},model:null};
+function pvInit(){
+  if(PV.gl) return true; var cv=document.getElementById('pv'); var gl=cv.getContext('webgl',{antialias:true}); if(!gl){ return false; } PV.gl=gl;
+  gl.getExtension('OES_element_index_uint');
+  var vs='attribute vec3 p;attribute vec3 n;attribute vec2 uv;uniform mat4 pv;varying vec3 vn;varying vec3 vw;varying vec2 vuv;void main(){gl_Position=pv*vec4(p,1.0);vn=n;vw=p;vuv=uv;}';
+  var fs='precision highp float;varying vec3 vn;varying vec3 vw;varying vec2 vuv;uniform vec3 cp;uniform sampler2D tex0;uniform float useTex;uniform vec3 baseCol;'+
+    'void main(){vec3 N=normalize(vn);vec3 V=normalize(cp-vw);if(dot(N,V)<0.0)N=-N;'+
+    'vec3 alb=useTex>0.5?texture2D(tex0,vuv).rgb:baseCol;'+
+    'float d=max(dot(N,normalize(vec3(0.5,0.8,0.4))),0.0)*0.7+max(dot(N,normalize(vec3(-0.4,0.3,-0.5))),0.0)*0.3+0.25;'+
+    'vec3 c=alb*d;c=c/(c+vec3(1.0));c=pow(c,vec3(1.0/2.2));gl_FragColor=vec4(c,1.0);}';
+  function sh(t,s){var o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);if(!gl.getShaderParameter(o,gl.COMPILE_STATUS))console.error(gl.getShaderInfoLog(o));return o;}
+  var pr=gl.createProgram();gl.attachShader(pr,sh(gl.VERTEX_SHADER,vs));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,fs));gl.linkProgram(pr);PV.prog=pr;
+  gl.enable(gl.DEPTH_TEST);
+  var drag=false,lx,ly;
+  cv.addEventListener('pointerdown',function(e){drag=true;lx=e.clientX;ly=e.clientY;});
+  window.addEventListener('pointerup',function(){drag=false;});
+  window.addEventListener('pointermove',function(e){if(!drag)return;PV.cam.th-=(e.clientX-lx)*0.01;PV.cam.ph-=(e.clientY-ly)*0.01;PV.cam.ph=Math.max(0.15,Math.min(2.9,PV.cam.ph));lx=e.clientX;ly=e.clientY;pvRender();});
+  cv.addEventListener('wheel',function(e){e.preventDefault();PV.cam.r*=(1+e.deltaY*0.001);pvRender();},{passive:false});
+  return true;
+}
+function b64ToBytes(b){var s=atob(b),n=s.length,a=new Uint8Array(n);for(var i=0;i<n;i++)a[i]=s.charCodeAt(i);return a;}
+async function gunzip(bytes){var ds=new DecompressionStream('gzip');return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(ds)).arrayBuffer());}
+async function previewLoad(D){
+  if(!pvInit()){ document.getElementById('stats').innerHTML+='\n(aperçu WebGL indisponible)'; return; }
+  var gl=PV.gl, mt=D.meta;
+  var raw=await gunzip(b64ToBytes(D.geo)); var off=0;
+  var posQ=new Uint16Array(raw.slice(off,off+mt.plen).buffer);off+=mt.plen;
+  var nrm=new Int8Array(raw.slice(off,off+mt.nlen).buffer);off+=mt.nlen;
+  var uv=new Float32Array(raw.slice(off,off+mt.uvlen).buffer);off+=mt.uvlen;
+  var idx=new Uint32Array(raw.slice(off,off+mt.ilen).buffer);off+=mt.ilen;
+  var bb=mt.bb,nv=mt.nv,pos=new Float32Array(nv*3);
+  for(var i=0;i<nv;i++){ pos[i*3]=bb[0]+(posQ[i*3]/65535)*(bb[3]-bb[0]); pos[i*3+1]=bb[1]+(posQ[i*3+1]/65535)*(bb[4]-bb[1]); pos[i*3+2]=bb[2]+(posQ[i*3+2]/65535)*(bb[5]-bb[2]); }
+  var nrmf=new Float32Array(nv*3); for(i=0;i<nv*3;i++) nrmf[i]=nrm[i]/127;
+  function buf(a){var b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,a,gl.STATIC_DRAW);return b;}
+  PV.buf.p=buf(pos);PV.buf.n=buf(nrmf);PV.buf.uv=buf(uv);
+  PV.buf.idx=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,PV.buf.idx);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+  PV.model={groups:D.groups,dim:mt.dim};
+  PV.txt={};
+  for(var k in D.tex){ (function(key,uri){ var t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([180,180,180,255])); PV.txt[key]={tex:t,ready:false};
+    var im=new Image(); im.onload=function(){ gl.bindTexture(gl.TEXTURE_2D,t); gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,true); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,im); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR); gl.generateMipmap(gl.TEXTURE_2D); PV.txt[key].ready=true; pvRender(); }; im.src=uri; })(k,D.tex[k]); }
+  PV.cam.r=Math.hypot(mt.dim[0],mt.dim[1],mt.dim[2])*1.15; PV.cam.ty=mt.dim[1]/2; PV.cam.th=0.7; PV.cam.ph=1.05;
+  pvRender();
+}
+function persp(f,as,n,fa){var t=1/Math.tan(f/2);return [t/as,0,0,0,0,t,0,0,0,0,(fa+n)/(n-fa),-1,0,0,2*fa*n/(n-fa),0];}
+function look(e,c,u){var f=[c[0]-e[0],c[1]-e[1],c[2]-e[2]];var l=Math.hypot(f[0],f[1],f[2]);f=[f[0]/l,f[1]/l,f[2]/l];var s=[f[1]*u[2]-f[2]*u[1],f[2]*u[0]-f[0]*u[2],f[0]*u[1]-f[1]*u[0]];l=Math.hypot(s[0],s[1],s[2]);s=[s[0]/l,s[1]/l,s[2]/l];var v=[s[1]*f[2]-s[2]*f[1],s[2]*f[0]-s[0]*f[2],s[0]*f[1]-s[1]*f[0]];return [s[0],v[0],-f[0],0,s[1],v[1],-f[1],0,s[2],v[2],-f[2],0,-(s[0]*e[0]+s[1]*e[1]+s[2]*e[2]),-(v[0]*e[0]+v[1]*e[1]+v[2]*e[2]),f[0]*e[0]+f[1]*e[1]+f[2]*e[2],1];}
+function mul(a,b){var o=new Array(16);for(var i=0;i<4;i++)for(var j=0;j<4;j++){var s=0;for(var k=0;k<4;k++)s+=a[k*4+j]*b[i*4+k];o[i*4+j]=s;}return o;}
+function pvRender(){
+  var gl=PV.gl,M=PV.model; if(!M) return; var cv=gl.canvas;
+  var w=cv.clientWidth,h=cv.clientHeight; if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;} gl.viewport(0,0,cv.width,cv.height);
+  var cam=PV.cam, ex=cam.r*Math.sin(cam.ph)*Math.sin(cam.th),ey=cam.ty+cam.r*Math.cos(cam.ph),ez=cam.r*Math.sin(cam.ph)*Math.cos(cam.th);
+  var pv=mul(persp(0.95,cv.width/cv.height,0.02,100), look([ex,ey,ez],[0,cam.ty,0],[0,1,0]));
+  gl.clearColor(0.067,0.078,0.102,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  var P=PV.prog; gl.useProgram(P);
+  gl.uniformMatrix4fv(gl.getUniformLocation(P,'pv'),false,new Float32Array(pv));
+  gl.uniform3f(gl.getUniformLocation(P,'cp'),ex,ey,ez); gl.uniform1i(gl.getUniformLocation(P,'tex0'),0);
+  function bind(nm,b,sz){var l=gl.getAttribLocation(P,nm);if(l<0)return;gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.enableVertexAttribArray(l);gl.vertexAttribPointer(l,sz,gl.FLOAT,false,0,0);}
+  bind('p',PV.buf.p,3);bind('n',PV.buf.n,3);bind('uv',PV.buf.uv,2);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,PV.buf.idx);
+  var ulU=gl.getUniformLocation(P,'useTex'),ulB=gl.getUniformLocation(P,'baseCol');
+  M.groups.forEach(function(g){ var t=g.tex?PV.txt[g.tex]:null;
+    if(t&&t.ready){ gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,t.tex);gl.uniform1f(ulU,1.0); }
+    else { gl.uniform1f(ulU,0.0); var c=g.col||[180,180,180]; gl.uniform3f(ulB,c[0]/255,c[1]/255,c[2]/255); }
+    gl.drawElements(gl.TRIANGLES,g.count,gl.UNSIGNED_INT,g.start*4); });
+}
+</script>
+</body>
+</html>
