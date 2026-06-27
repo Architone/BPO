@@ -4982,35 +4982,28 @@ function buildProductUI(){
 
   /* fiche selon le produit */
   var card=document.createElement('div'); card.className='product-card';
-  var info, maker=curCat().label.toUpperCase();
-  if(AL_PRODUCT==='woo'){
-    info={
-      name:'Desserte à roulettes',
-      desc:'Table basse / desserte mobile. Plateau enveloppant en Corian blanc, '+
-           'roulettes en caoutchouc noir, axes aluminium. Pièce de mobilier d\'auteur.',
-      dim:'~80 × 120 × 45 cm',
-      mat:'Corian blanc · Caoutchouc · Aluminium',
-      faces:WOO.F.length
-    };
-  } else if(AL_PRODUCT==='bureau'){
-    info={
-      name:'Bureau administratif 1 personne',
-      desc:'Poste de travail complet : plan de bureau, caisson de rangement et '+
-           'siège ergonomique à roulettes. Mobilier de bureau.',
-      dim:'~251 × 187 × 112 cm',
-      mat:'Bois · Métal · Textile · Verre',
-      faces:BUREAU.F.length
-    };
-  } else {
-    info={
-      name:'Quadripode',
-      desc:'Tabouret / guéridon. Assise bombée en tissu épais orange, quatre pieds '+
-           'fuselés en chrome. Pièce de mobilier d\'auteur.',
-      dim:'~42 × 42 × 40 cm',
-      mat:'Tissu orange · Chrome',
-      faces:QUADRIPOD.F.length
-    };
-  }
+  var maker=curCat().label.toUpperCase(), cc=curCat();
+  /* dimensions + faces depuis le maillage réel */
+  var meta=null;
+  if(typeof TEX_OBJECTS!=='undefined' && TEX_OBJECTS[AL_PRODUCT]) meta=TEX_OBJECTS[AL_PRODUCT].meta;
+  else if(typeof WEBGL_OBJECTS!=='undefined' && WEBGL_OBJECTS[AL_PRODUCT]) meta=WEBGL_OBJECTS[AL_PRODUCT].meta;
+  /* nom / description / catégorie depuis l'entrée catalogue du produit */
+  var prod=null; if(cc.subs){ for(var pi=0;pi<cc.subs.length;pi++){ if(cc.subs[pi].id===AL_PRODUCT){ prod=cc.subs[pi]; break; } } }
+  /* descriptions soignées d'origine (repli pour les 3 produits de base) */
+  var BUILTIN={
+    woo:{name:'Desserte à roulettes',desc:'Table basse / desserte mobile. Plateau enveloppant en Corian blanc, roulettes caoutchouc, axes aluminium.',mat:'Corian blanc \u00b7 Caoutchouc \u00b7 Aluminium'},
+    bureau:{name:'Bureau administratif 1 personne',desc:'Poste de travail complet : plan de bureau, caisson de rangement et si\u00e8ge ergonomique \u00e0 roulettes.',mat:'Bois \u00b7 M\u00e9tal \u00b7 Textile \u00b7 Verre'},
+    quadripod:{name:'Quadripode',desc:'Tabouret / gu\u00e9ridon. Assise bomb\u00e9e en tissu \u00e9pais orange, quatre pieds fusel\u00e9s en chrome.',mat:'Tissu orange \u00b7 Chrome'}
+  };
+  var bi=BUILTIN[AL_PRODUCT]||null;
+  function dimStr(m){ return (m&&m.dim)?('~'+Math.round(m.dim[0]*100)+' \u00d7 '+Math.round(m.dim[2]*100)+' \u00d7 '+Math.round(m.dim[1]*100)+' cm'):'\u2014'; }
+  var info={
+    name:(prod&&prod.label)?prod.label:(bi?bi.name:AL_PRODUCT),
+    desc:(prod&&prod.description)?prod.description:(bi?bi.desc:''),
+    dim:dimStr(meta),
+    mat:bi?bi.mat:((prod&&prod.categorie)?prod.categorie:'\u2014'),
+    faces:(meta&&meta.nf)?meta.nf:'\u2014'
+  };
   card.innerHTML=
     '<div class="pc-maker">'+maker+'</div>'+
     '<div class="pc-name">'+info.name+'</div>'+
