@@ -45,9 +45,14 @@
   <div class="card full">
     <h2>1 · Déposer le modèle</h2>
     <div id="drop" class="drop">
-      <b>Glisse ici</b> le fichier <b>.dae</b> et ses <b>images de texture</b> (.png/.jpg)<br>
-      <span style="font-size:12px">— ou clique pour choisir les fichiers —</span>
+      <b>Glisse ici</b> le fichier <b>.dae</b> et son <b>dossier de textures</b> (ou les images en vrac)<br>
+      <span style="font-size:12px">— ou utilise les boutons ci-dessous —</span>
       <input id="file" type="file" multiple accept=".dae,image/*" style="display:none">
+      <input id="dir" type="file" webkitdirectory directory multiple style="display:none">
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="pickFile" type="button">＋ Fichier .dae / images</button>
+      <button id="pickDir" type="button">📁 Dossier de textures</button>
     </div>
     <div id="files" class="files"></div>
     <div class="row" style="margin-top:10px">
@@ -226,8 +231,9 @@ function buildMesh(parsed){
   });
   var nv=POS.length/3, nf=IDX.length/3;
   if(nv===0) throw new Error('Aucune géométrie exploitable trouvée dans le DAE.');
-  var xs=[],ys=[],zs=[]; for(var i=0;i<nv;i++){ xs.push(POS[i*3]); ys.push(POS[i*3+1]); zs.push(POS[i*3+2]); }
-  var minx=Math.min.apply(0,xs),maxx=Math.max.apply(0,xs),miny=Math.min.apply(0,ys),maxy=Math.max.apply(0,ys),minz=Math.min.apply(0,zs),maxz=Math.max.apply(0,zs);
+  var minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity,minz=Infinity,maxz=-Infinity;
+  for(var i=0;i<nv;i++){ var X=POS[i*3],Y=POS[i*3+1],Z=POS[i*3+2];
+    if(X<minx)minx=X; if(X>maxx)maxx=X; if(Y<miny)miny=Y; if(Y>maxy)maxy=Y; if(Z<minz)minz=Z; if(Z>maxz)maxz=Z; }
   var cx=(minx+maxx)/2, cz=(minz+maxz)/2;
   for(var i=0;i<nv;i++){ POS[i*3]-=cx; POS[i*3+1]-=miny; POS[i*3+2]-=cz; }
   var bb=[minx-cx,0,minz-cz,maxx-cx,maxy-miny,maxz-cz];
@@ -273,11 +279,29 @@ function refreshFiles(){ var l=[]; if(DAE_TEXT) l.push('• modèle .dae ('+(DAE
 function takeFiles(list){ Array.prototype.forEach.call(list,function(f){ var n=f.name.toLowerCase();
   if(n.endsWith('.dae')){ var r=new FileReader(); r.onload=function(e){ DAE_TEXT=e.target.result; refreshFiles(); }; r.readAsText(f); }
   else if(f.type.indexOf('image')===0||/\.(png|jpg|jpeg)$/i.test(n)){ TEX_FILES[f.name]=f; refreshFiles(); } }); }
+var dirInput=document.getElementById('dir');
 dropEl.onclick=function(){ fileInput.click(); };
+document.getElementById('pickFile').onclick=function(e){ e.stopPropagation(); fileInput.click(); };
+document.getElementById('pickDir').onclick=function(e){ e.stopPropagation(); dirInput.click(); };
 fileInput.onchange=function(e){ takeFiles(e.target.files); };
+dirInput.onchange=function(e){ takeFiles(e.target.files); };
 ['dragover','dragenter'].forEach(function(ev){ dropEl.addEventListener(ev,function(e){ e.preventDefault(); dropEl.classList.add('hi'); }); });
-['dragleave','drop'].forEach(function(ev){ dropEl.addEventListener(ev,function(e){ e.preventDefault(); dropEl.classList.remove('hi'); }); });
-dropEl.addEventListener('drop',function(e){ takeFiles(e.dataTransfer.files); });
+dropEl.addEventListener('dragleave',function(e){ e.preventDefault(); dropEl.classList.remove('hi'); });
+/* dépôt : supporte fichiers ET dossiers (lecture récursive des sous-dossiers) */
+function readAllEntries(reader){ return new Promise(function(res){ var out=[]; (function loop(){ reader.readEntries(function(ents){ if(!ents.length) res(out); else { out=out.concat(Array.prototype.slice.call(ents)); loop(); } }, function(){ res(out); }); })(); }); }
+async function walkEntry(entry, acc){
+  if(entry.isFile){ await new Promise(function(res){ entry.file(function(f){ acc.push(f); res(); }, function(){ res(); }); }); }
+  else if(entry.isDirectory){ var ents=await readAllEntries(entry.createReader()); for(var i=0;i<ents.length;i++) await walkEntry(ents[i], acc); }
+}
+dropEl.addEventListener('drop', async function(e){
+  e.preventDefault(); dropEl.classList.remove('hi');
+  var items=e.dataTransfer.items, entries=[];
+  if(items && items.length && items[0] && items[0].webkitGetAsEntry){
+    for(var i=0;i<items.length;i++){ var en=items[i].webkitGetAsEntry(); if(en) entries.push(en); }
+  }
+  if(entries.length){ var acc=[]; for(var i=0;i<entries.length;i++){ await walkEntry(entries[i], acc); } takeFiles(acc); }
+  else { takeFiles(e.dataTransfer.files); }
+});
 
 function msg(el,txt,kind){ document.getElementById(el).innerHTML='<div class="msg '+(kind||'ok')+'">'+txt+'</div>'; }
 
