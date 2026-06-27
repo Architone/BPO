@@ -31,7 +31,7 @@
         "id": "bureau",
         "label": "Bureau administratif 1p",
         "render": "webgl-tex",
-        "data": "BUREAU_TEX",
+        "data": "TEX_OBJECTS.bureau",
         "categorie": "bureau",
         "source": "DAE ArchiCAD",
         "description": "Poste de travail complet, modèle texturé haute fidélité."

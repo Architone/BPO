@@ -71,88 +71,89 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { SUPABASE_URL, SUPABASE_ANON, SITE_URL, TRIAL_DAYS } from "./bpo-config.js";
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+if(String(SUPABASE_URL).includes("VOTRE-PROJET")){
+document.querySelector(".wrap").innerHTML =
+'<div class="card"><h1>Backend à configurer</h1>'+
+'<p class="sub" style="margin-top:8px;">La création de compte nécessite un projet <b>Supabase</b>. '+
+'Ouvrez <code>bpo-config.js</code>, collez votre <b>URL de projet</b> et votre <b>clé anon</b> '+
+'(voir le guide de mise en place), puis rechargez cette page.</p></div>';
+throw new Error("BPO: backend Supabase non configuré");
+}
 const $ = id => document.getElementById(id);
-let mode = "login"; // login | signup
-
+let mode = "login";  
 function show(el){ el.classList.remove("hidden"); } function hide(el){ el.classList.add("hidden"); }
 function setMsg(el,t,ok){ el.textContent=t||""; el.className="msg "+(ok?"ok":"err"); }
-
 $("toggle").onclick = () => {
-  mode = mode==="login" ? "signup" : "login";
-  const sign = mode==="signup";
-  $("authTitle").textContent = sign ? "Créer un compte" : "Connexion";
-  $("authSub").textContent = sign ? "Essai de "+TRIAL_DAYS+" jours, sans carte bancaire." : "Accédez à votre compte.";
-  $("doAuth").textContent = sign ? "Créer mon compte" : "Se connecter";
-  $("toggle").textContent = sign ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)";
-  $("nameFld").classList.toggle("hidden", !sign);
-  $("nlFld").classList.toggle("hidden", !sign);
-  setMsg($("authMsg"),"");
+mode = mode==="login" ? "signup" : "login";
+const sign = mode==="signup";
+$("authTitle").textContent = sign ? "Créer un compte" : "Connexion";
+$("authSub").textContent = sign ? "Essai de "+TRIAL_DAYS+" jours, sans carte bancaire." : "Accédez à votre compte.";
+$("doAuth").textContent = sign ? "Créer mon compte" : "Se connecter";
+$("toggle").textContent = sign ? "Déjà un compte ? Se connecter" : "Pas encore de compte ? Créer un compte (essai 15 jours gratuit)";
+$("nameFld").classList.toggle("hidden", !sign);
+$("nlFld").classList.toggle("hidden", !sign);
+setMsg($("authMsg"),"");
 };
-
 $("doAuth").onclick = async () => {
-  const email=$("email").value.trim(), pwd=$("pwd").value;
-  if(!email||!pwd){ return setMsg($("authMsg"),"E-mail et mot de passe requis."); }
-  $("doAuth").disabled=true;
-  try{
-    if(mode==="signup"){
-      const { error } = await sb.auth.signUp({ email, password:pwd,
-        options:{ data:{ full_name:$("fname").value.trim(), newsletter:$("nl").checked }, emailRedirectTo: SITE_URL+"/compte.html" } });
-      if(error) throw error;
-      setMsg($("authMsg"),"Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.",true);
-    } else {
-      const { error } = await sb.auth.signInWithPassword({ email, password:pwd });
-      if(error) throw error;
-      await render();
-    }
-  } catch(e){ setMsg($("authMsg"), e.message||"Erreur."); }
-  $("doAuth").disabled=false;
+const email=$("email").value.trim(), pwd=$("pwd").value;
+if(!email||!pwd){ return setMsg($("authMsg"),"E-mail et mot de passe requis."); }
+$("doAuth").disabled=true;
+try{
+if(mode==="signup"){
+const { error } = await sb.auth.signUp({ email, password:pwd,
+options:{ data:{ full_name:$("fname").value.trim(), newsletter:$("nl").checked }, emailRedirectTo: SITE_URL+"/compte.html" } });
+if(error) throw error;
+setMsg($("authMsg"),"Compte créé. Vérifiez vos e-mails pour confirmer, puis connectez-vous.",true);
+} else {
+const { error } = await sb.auth.signInWithPassword({ email, password:pwd });
+if(error) throw error;
+await render();
+}
+} catch(e){ setMsg($("authMsg"), e.message||"Erreur."); }
+$("doAuth").disabled=false;
 };
-
 $("magic").onclick = async () => {
-  const email=$("email").value.trim(); if(!email) return setMsg($("authMsg"),"Saisissez votre e-mail.");
-  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: SITE_URL+"/compte.html" } });
-  setMsg($("authMsg"), error? error.message : "Lien de connexion envoyé par e-mail.", !error);
+const email=$("email").value.trim(); if(!email) return setMsg($("authMsg"),"Saisissez votre e-mail.");
+const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: SITE_URL+"/compte.html" } });
+setMsg($("authMsg"), error? error.message : "Lien de connexion envoyé par e-mail.", !error);
 };
-
 $("logout").onclick = async () => { await sb.auth.signOut(); await render(); };
 $("openApp").onclick = () => { location.href = "./meuble.html"; };
 $("nlToggle").onchange = async () => {
-  const { data:{ user } } = await sb.auth.getUser();
-  await sb.from("profiles").update({ newsletter_opt_in: $("nlToggle").checked }).eq("id", user.id);
+const { data:{ user } } = await sb.auth.getUser();
+await sb.from("profiles").update({ newsletter_opt_in: $("nlToggle").checked }).eq("id", user.id);
 };
-
 async function callFn(name){
-  const { data:{ session } } = await sb.auth.getSession();
-  const r = await fetch(SUPABASE_URL+"/functions/v1/"+name, {
-    method:"POST", headers:{ "Authorization":"Bearer "+session.access_token, "Content-Type":"application/json" },
-    body: JSON.stringify({ returnUrl: SITE_URL+"/compte.html" }) });
-  return r.json();
+const { data:{ session } } = await sb.auth.getSession();
+const r = await fetch(SUPABASE_URL+"/functions/v1/"+name, {
+method:"POST", headers:{ "Authorization":"Bearer "+session.access_token, "Content-Type":"application/json" },
+body: JSON.stringify({ returnUrl: SITE_URL+"/compte.html" }) });
+return r.json();
 }
 $("subscribe").onclick = async () => {
-  setMsg($("accMsg"),"Redirection vers le paiement…",true);
-  try{ const j=await callFn("create-checkout"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
-  catch(e){ setMsg($("accMsg"), e.message); }
+setMsg($("accMsg"),"Redirection vers le paiement…",true);
+try{ const j=await callFn("create-checkout"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
+catch(e){ setMsg($("accMsg"), e.message); }
 };
 $("portal").onclick = async () => {
-  try{ const j=await callFn("create-portal"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
-  catch(e){ setMsg($("accMsg"), e.message); }
+try{ const j=await callFn("create-portal"); if(j.url) location.href=j.url; else throw new Error(j.error||"Erreur"); }
+catch(e){ setMsg($("accMsg"), e.message); }
 };
-
 async function render(){
-  const { data:{ session } } = await sb.auth.getSession();
-  if(!session){ hide($("account")); show($("auth")); return; }
-  hide($("auth")); show($("account"));
-  const { data: prof } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
-  $("who").textContent = (prof?.full_name? prof.full_name+" — ":"") + session.user.email;
-  const active = prof?.plan === "active";
-  const trialLeft = prof? Math.ceil((new Date(prof.trial_ends_at)-Date.now())/86400000) : 0;
-  const trialing = !active && trialLeft>0;
-  const b=$("statusBadge");
-  if(active){ b.textContent="Abonné"; b.className="badge b-ok"; $("periodLbl").textContent="Abonnement jusqu'au"; $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); }
-  else if(trialing){ b.textContent="Essai"; b.className="badge b-warn"; $("periodLbl").textContent="Jours d'essai restants"; $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); }
-  else { b.textContent="Expiré"; b.className="badge b-no"; $("periodLbl").textContent="Essai terminé"; $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); $("openApp").disabled=true; }
-  $("nlToggle").checked = !!prof?.newsletter_opt_in;
-  if(new URLSearchParams(location.search).get("paid")) setMsg($("accMsg"),"Merci ! Votre abonnement est en cours d'activation.",true);
+const { data:{ session } } = await sb.auth.getSession();
+if(!session){ hide($("account")); show($("auth")); return; }
+hide($("auth")); show($("account"));
+const { data: prof } = await sb.from("profiles").select("*").eq("id", session.user.id).single();
+$("who").textContent = (prof?.full_name? prof.full_name+" — ":"") + session.user.email;
+const active = prof?.plan === "active";
+const trialLeft = prof? Math.ceil((new Date(prof.trial_ends_at)-Date.now())/86400000) : 0;
+const trialing = !active && trialLeft>0;
+const b=$("statusBadge");
+if(active){ b.textContent="Abonné"; b.className="badge b-ok"; $("periodLbl").textContent="Abonnement jusqu'au"; $("periodVal").textContent = prof.current_period_end? new Date(prof.current_period_end).toLocaleDateString():"—"; hide($("subscribe")); show($("portal")); }
+else if(trialing){ b.textContent="Essai"; b.className="badge b-warn"; $("periodLbl").textContent="Jours d'essai restants"; $("periodVal").textContent = trialLeft; show($("subscribe")); hide($("portal")); }
+else { b.textContent="Expiré"; b.className="badge b-no"; $("periodLbl").textContent="Essai terminé"; $("periodVal").textContent="—"; show($("subscribe")); hide($("portal")); $("openApp").disabled=true; }
+$("nlToggle").checked = !!prof?.newsletter_opt_in;
+if(new URLSearchParams(location.search).get("paid")) setMsg($("accMsg"),"Merci ! Votre abonnement est en cours d'activation.",true);
 }
 sb.auth.onAuthStateChange(()=>render());
 render();
