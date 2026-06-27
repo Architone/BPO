@@ -44,6 +44,14 @@ var FABRICANTS_DB=[
         "data": "TEX_OBJECTS.objet_h4a8",
         "categorie": "Assise",
         "description": "Siège Bureau 1"
+      },
+      {
+        "id": "objet_9mf5",
+        "label": "Chaise Aero",
+        "render": "webgl-tex",
+        "data": "TEX_OBJECTS.objet_9mf5",
+        "categorie": "Assise",
+        "description": "Chaise bureau réglable, roulettes, accoudoirs"
       }
     ]
   },
