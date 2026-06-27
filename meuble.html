@@ -5002,6 +5002,7 @@ function buildProductUI(){
     desc:(prod&&prod.description)?prod.description:(bi?bi.desc:''),
     dim:dimStr(meta),
     mat:bi?bi.mat:((prod&&prod.categorie)?prod.categorie:'\u2014'),
+    matLabel:bi?'Matériaux':'Catégorie de produit',
     faces:(meta&&meta.nf)?meta.nf:'\u2014'
   };
   card.innerHTML=
@@ -5009,7 +5010,7 @@ function buildProductUI(){
     '<div class="pc-name">'+info.name+'</div>'+
     '<div class="pc-desc">'+info.desc+'</div>'+
     '<div class="pc-spec"><span>Dimensions</span><b>'+info.dim+'</b></div>'+
-    '<div class="pc-spec"><span>Matériaux</span><b>'+info.mat+'</b></div>'+
+    '<div class="pc-spec"><span>'+info.matLabel+'</span><b>'+info.mat+'</b></div>'+
     '<div class="pc-spec"><span>Faces</span><b>'+info.faces+'</b></div>'+
     '<div class="pc-badge">● Produit fabricant — rendu WebGL haute fidélité</div>';
   host.appendChild(card);
