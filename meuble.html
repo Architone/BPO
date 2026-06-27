@@ -44,6 +44,8 @@ header{display:flex;align-items:center;justify-content:space-between;
 .hint{position:absolute;top:9px;left:9px;font-family:monospace;font-size:9px;color:var(--dm);pointer-events:none;}
 .sig{position:absolute;bottom:9px;left:9px;font-family:monospace;font-size:9px;color:var(--am);opacity:.55;pointer-events:none;}
 .dims{position:absolute;bottom:9px;right:9px;font-family:monospace;font-size:10px;color:var(--am);pointer-events:none;}
+.vp-btn{position:absolute;top:8px;right:10px;font-family:system-ui,sans-serif;font-size:11px;background:rgba(38,43,52,.9);border:1px solid var(--ln);color:var(--tx);border-radius:6px;padding:6px 10px;cursor:pointer;z-index:6;}
+.vp-btn:hover{border-color:var(--am);color:var(--am);}
 
 /* Colonne gauche : navigation catalogue.
    Mobile : barre horizontale compacte (scroll latéral). Desktop : colonne. */
@@ -56,7 +58,7 @@ header{display:flex;align-items:center;justify-content:space-between;
 #panel{background:var(--pn);border-top:1px solid var(--ln);padding:12px 14px;
   overflow-y:auto;}
 .slbl{font-family:monospace;font-size:9px;text-transform:uppercase;letter-spacing:1.2px;
-  color:var(--dm);margin:0 0 8px 1px;}
+  color:var(--am);margin:0 0 8px 1px;}
 .fld{margin-bottom:11px;}
 .fh{display:flex;justify-content:space-between;margin-bottom:3px;}
 .fh label{font-size:11px;color:var(--tx);font-weight:500;}
@@ -215,6 +217,7 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
     <div class="hint" id="hint">GLISSER · orbiter | MOLETTE · zoomer</div>
     <div class="sig">© 2026 Antoine Lacronique, architecte</div>
     <div class="dims" id="dims">—</div>
+    <button class="vp-btn" id="recenter" title="Recentrer la vue">⊕ Recentrer</button>
   </div>
 
   <!-- COLONNE DROITE : paramètres de l'objet -->
@@ -1248,13 +1251,17 @@ var FINISH = {
   cwspandrel:[60, 66, 74],    /* mur-rideau : allège/opaque  */
   cwvent:  [140, 144, 150],   /* mur-rideau : ouvrant        */
   fstruct: [120, 84, 56],     /* mobilier : structure/piétement */
-  fgarn:   [206, 200, 190]    /* mobilier : garnissage/plateau  */
+  fgarn:   [206, 200, 190],   /* mobilier : garnissage/plateau  */
+  hossature:[120, 124, 130],  /* hangar : ossature acier */
+  hbardage: [176, 180, 186],  /* hangar : bardage métal  */
+  hcorner:  [176, 180, 186],  /* hangar : cornière d'angle */
+  hbeton:   [165, 165, 160]   /* hangar : fondations / parpaing */
 };
 
 /* FINISH_TEX : texture appliquée à chaque élément (id de texture, ou null = couleur unie).
    Quand une texture est active, les faces de l'élément sont rendues texturées. */
 var FINISH_TEX = {
-  corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null
+  corps:null, etagere:null, porte:null, forme:null, objet:null, bati:null, panneau:null, poignee:null, fcadre:null, fouvrant:null, fpoignee:null, cwframe:null, cwspandrel:null, cwvent:null, fstruct:null, fgarn:null, hossature:null, hbardage:null, hcorner:null, hbeton:null
 };
 /* Objets a corps unique ou multicouche pouvant recevoir une matiere globale,
    en plus de leurs presets/couches. 'objet' = cle de finition partagee. */
@@ -1297,6 +1304,12 @@ var FINISH_ELEMS_MURRIDEAU = [
 var FINISH_ELEMS_FURN = [
   {id:'fstruct', l:'Structure'},
   {id:'fgarn',   l:'Garnissage'}
+];
+var FINISH_ELEMS_HANGAR = [
+  {id:'hossature', l:'Ossature'},
+  {id:'hbardage',  l:'Bardage'},
+  {id:'hcorner',   l:'Cornière'},
+  {id:'hbeton',    l:'Maçonnerie'}
 ];
 
 /* Accès rapide aux couleurs (utilisés par les builders) */
@@ -1582,7 +1595,7 @@ var CATALOG = {
       {id:'murrideau',  label:'Mur-rideau',       status:'todo'},
       {id:'ouvtoit',    label:'Ouverture de toit',status:'todo'},
       {id:'fenangle',   label:"Fenêtre d'angle",  status:'todo'},
-      {id:'percement',  label:'Percement',        status:'todo'},
+      {id:'hangar',     label:'Hangar métallique', status:'ready'},
       {id:'tetemur',    label:'Tête de mur',      status:'todo'},
       {id:'maillage',   label:'Maillage',         status:'todo'},
       {id:'forme',      label:'Forme',            status:'ready'}   /* -> formes */
@@ -1634,6 +1647,7 @@ function selectCat(catId){
   else if(cat.id==='fenetre'){ MODE='fenetre'; }
   else if(cat.id==='murrideau'){ MODE='murrideau'; }
   else if(cat.id==='objets'){ MODE='furn'; }
+  else if(cat.id==='hangar'){ MODE='hangar'; }
   else if(cat.subs && cat.status==='ready'){
     /* fabricant avec produits : MODE='quadripod' (= moteur objet importé) et on
        sélectionne le premier produit du fabricant par défaut. */
@@ -2877,6 +2891,350 @@ function buildFurnUI(){
   buildObjUI(p, [{title:FURN.label, fields:f}], buildFurnUI);
 }
 
+/* ============================================================================
+   HANGAR MÉTALLIQUE — bâtiment industriel paramétrique (catégorie générique)
+   Fondations (filantes / massifs), ossature acier à profils normés, pente et
+   type de ferme variables, bardage métal ou remplissage parpaing, toiture
+   bardage avec/sans isolation. Repère : sol à y=0, portée selon X, longueur
+   selon Z, hauteur selon Y.
+   ============================================================================ */
+var PHANGAR={
+  span:1500, length:3000, height:600, bays:5, pitch:12,
+  truss:'portique', colSerie:'HEA', colSize:240, beamSerie:'IPE', beamSize:240,
+  found:'filantes', foundW:50, foundH:50,
+  wall:'bardage', wallIso:true, roofIso:true, bardType:'nervure', bardDir:'vert', cornAngle:true, purlins:6, purlinMode:'dessus',
+  rives:true, gussets:true, iProfiles:true, girts:3, bracing:true, roofCover:'bac', slabRDC:true, floors:0, floorH:300, floorCover:100, slabType:'beton'
+};
+/* barre (boîte orientée) dans le plan X-Y à la cote z, section t(perp dans le plan) x depth(selon Z) */
+function hStrut(ax,ay,bx,by,z,t,depth,col){
+  var dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy); if(len<1e-6) return;
+  var px=-dy/len, py=dx/len, ht=t/2, hz=depth/2;
+  var vt=[
+    [ax-px*ht,ay-py*ht,z-hz],[bx-px*ht,by-py*ht,z-hz],[bx+px*ht,by+py*ht,z-hz],[ax+px*ht,ay+py*ht,z-hz],
+    [ax-px*ht,ay-py*ht,z+hz],[bx-px*ht,by-py*ht,z+hz],[bx+px*ht,by+py*ht,z+hz],[ax+px*ht,ay+py*ht,z+hz]
+  ];
+  boxV(vt,col,1);
+}
+/* pignon triangulaire (prisme) au-dessus des murs */
+function hGable(zc,thk,S,H,ridgeY,col){
+  var hz=thk/2, tri=[[-S/2,H],[S/2,H],[0,ridgeY]];
+  face([[tri[0][0],tri[0][1],zc-hz],[tri[1][0],tri[1][1],zc-hz],[tri[2][0],tri[2][1],zc-hz]],[0,0,-1],col,1);
+  face([[tri[2][0],tri[2][1],zc+hz],[tri[1][0],tri[1][1],zc+hz],[tri[0][0],tri[0][1],zc+hz]],[0,0,1],col,1);
+  for(var i=0;i<3;i++){ var a=tri[i],b=tri[(i+1)%3];
+    var q=[[a[0],a[1],zc-hz],[b[0],b[1],zc-hz],[b[0],b[1],zc+hz],[a[0],a[1],zc+hz]];
+    face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col,1);
+  }
+}
+function hSlabThk(type){ return type==='beton'?0.20 : (type==='collaborant'?0.16 : 0.30); }
+function hSlab(yTop, S, Lspan, zc, type, cBet, cOss){
+  var iw=S-0.1, il=Lspan-0.1;
+  if(type==='metal'){
+    _CURTEX=FINISH_TEX.hossature; var bh=0.28, bw=0.12;
+    box(-S/2+0.12, yTop-bh/2, zc, bw,bh,il, cOss,1); box(S/2-0.12, yTop-bh/2, zc, bw,bh,il, cOss,1); box(0, yTop-bh/2, zc, bw,bh,il, cOss,1);
+    var nj=Math.max(2,Math.round(Lspan/1.5));
+    for(var k=0;k<=nj;k++){ var z=zc-Lspan/2+k*(Lspan/nj); box(0, yTop-bh/2, z, iw, bh*0.6, 0.08, cOss,1); }
+    box(0, yTop-0.02, zc, iw, 0.04, il, cOss,1); _CURTEX=null;
+  } else if(type==='collaborant'){
+    _CURTEX=null; box(0, yTop-0.135, zc, iw, 0.05, il, [150,152,158], 1);
+    _CURTEX=FINISH_TEX.hbeton; box(0, yTop-0.055, zc, iw, 0.11, il, cBet, 1); _CURTEX=null;
+  } else {
+    _CURTEX=FINISH_TEX.hbeton; box(0, yTop-0.10, zc, iw, 0.20, il, cBet, 1); _CURTEX=null;
+  }
+}
+function triPrism(pts, zc, thk, col){
+  var hz=thk/2;
+  face([[pts[0][0],pts[0][1],zc-hz],[pts[1][0],pts[1][1],zc-hz],[pts[2][0],pts[2][1],zc-hz]],[0,0,-1],col,1);
+  face([[pts[2][0],pts[2][1],zc+hz],[pts[1][0],pts[1][1],zc+hz],[pts[0][0],pts[0][1],zc+hz]],[0,0,1],col,1);
+  for(var i=0;i<3;i++){ var a=pts[i],b=pts[(i+1)%3];
+    var q=[[a[0],a[1],zc-hz],[b[0],b[1],zc-hz],[b[0],b[1],zc+hz],[a[0],a[1],zc+hz]];
+    face(q, norm(cross(sub(q[1],q[0]),sub(q[3],q[0]))), col,1);
+  }
+}
+/* tole pliee solide : strip entre deux sections transversales A et B (points 3D),
+   chaque segment devient une plaque d'epaisseur t (volume ferme) */
+function hRib2(A,B,t,col){
+  var ht=t/2;
+  for(var k=0;k<A.length-1;k++){
+    var a0=A[k],a1=A[k+1],b0=B[k],b1=B[k+1];
+    var nn=norm(cross(sub(a1,a0),sub(b0,a0))), h=[nn[0]*ht,nn[1]*ht,nn[2]*ht];
+    boxV([
+      [a0[0]-h[0],a0[1]-h[1],a0[2]-h[2]],[a1[0]-h[0],a1[1]-h[1],a1[2]-h[2]],
+      [b1[0]-h[0],b1[1]-h[1],b1[2]-h[2]],[b0[0]-h[0],b0[1]-h[1],b0[2]-h[2]],
+      [a0[0]+h[0],a0[1]+h[1],a0[2]+h[2]],[a1[0]+h[0],a1[1]+h[1],a1[2]+h[2]],
+      [b1[0]+h[0],b1[1]+h[1],b1[2]+h[2]],[b0[0]+h[0],b0[1]+h[1],b0[2]+h[2]]
+    ],col,1);
+  }
+}
+/* barre orientée dans le plan Y-Z à l'abscisse xc (contreventement de façade longue) */
+function barYZ(xc,ya,za,yb,zb,t,w,col){
+  var dy=yb-ya,dz=zb-za,len=Math.hypot(dy,dz); if(len<1e-6) return;
+  var py=-dz/len*t/2, pz=dy/len*t/2, hw=w/2;
+  boxV([
+    [xc-hw,ya+py,za+pz],[xc-hw,yb+py,zb+pz],[xc-hw,yb-py,zb-pz],[xc-hw,ya-py,za-pz],
+    [xc+hw,ya+py,za+pz],[xc+hw,yb+py,zb+pz],[xc+hw,yb-py,zb-pz],[xc+hw,ya-py,za-pz]
+  ],col,1);
+}
+function hStrutI(ax,ay,bx,by, z, h,b,tw,tf, col){
+  var dx=bx-ax,dy=by-ay,len=Math.hypot(dx,dy); if(len<1e-6) return;
+  var px=-dy/len, py=dx/len, off=(h-tf)/2;
+  hStrut(ax+px*off,ay+py*off, bx+px*off,by+py*off, z, tf, b, col);   /* semelle haute */
+  hStrut(ax-px*off,ay-py*off, bx-px*off,by-py*off, z, tf, b, col);   /* semelle basse */
+  hStrut(ax,ay,bx,by, z, Math.max(h-2*tf,0.01), tw, col);            /* âme */
+}
+function buildHangar(){
+  var S=PHANGAR.span/100, L=PHANGAR.length/100, H=PHANGAR.height/100;
+  var bays=Math.max(1,PHANGAR.bays|0), p=PHANGAR.pitch*Math.PI/180;
+  var rise=(S/2)*Math.tan(p), ridgeY=H+rise, halfL=L/2;
+  var cs=steelDims(PHANGAR.colSerie,PHANGAR.colSize).dims, bs=steelDims(PHANGAR.beamSerie,PHANGAR.beamSize).dims;
+  var colH=cs[0]/1000, colB=cs[1]/1000, beamH=bs[0]/1000, beamB=bs[1]/1000;
+  var colPI={h:colH,b:colB,tw:cs[2]/1000,tf:cs[3]/1000}, beamPI={h:beamH,b:beamB,tw:bs[2]/1000,tf:bs[3]/1000};
+  var cOss=FINISH.hossature, cBard=FINISH.hbardage, cCorn=FINISH.hcorner, cBet=FINISH.hbeton, cIso=[232,214,128];
+  function memI(ax,ay,bx,by,zz,prof){ if(PHANGAR.iProfiles) hStrutI(ax,ay,bx,by,zz,prof.h,prof.b,prof.tw,prof.tf,cOss); else hStrut(ax,ay,bx,by,zz,prof.h,prof.b,cOss); }
+  function web(ax,ay,bx,by,zz,tt){ hStrut(ax,ay,bx,by,zz, tt||0.05, beamB*0.6, cOss); }
+  var fw=PHANGAR.foundW/100, fh=PHANGAR.foundH/100;
+  /* --- FONDATIONS (béton) --- */
+  _CURTEX=FINISH_TEX.hbeton;
+  if(PHANGAR.found==='filantes'){
+    box(-S/2,-fh/2,0, fw,fh,L+fw, cBet,1); box(S/2,-fh/2,0, fw,fh,L+fw, cBet,1);
+    box(0,-fh/2,-halfL, S,fh,fw, cBet,1);  box(0,-fh/2,halfL, S,fh,fw, cBet,1);
+  } else {
+    for(var i=0;i<=bays;i++){ var z=-halfL+i*(L/bays); box(-S/2,-fh/2,z, fw,fh,fw, cBet,1); box(S/2,-fh/2,z, fw,fh,fw, cBet,1); }
+  }
+  _CURTEX=null;
+  /* --- OSSATURE ACIER (portiques / fermes) --- */
+  _CURTEX=FINISH_TEX.hossature;
+  for(var i=0;i<=bays;i++){ var z=-halfL+i*(L/bays);
+    memI(-S/2,0,-S/2,H, z, colPI);   /* poteaux */
+    memI( S/2,0, S/2,H, z, colPI);
+    memI(-S/2,H, 0,ridgeY, z, beamPI);   /* arbalétriers (membrures hautes) */
+    memI( S/2,H, 0,ridgeY, z, beamPI);
+    var tt=PHANGAR.truss;
+    if(tt==='ciseaux'){
+      var cy=H+rise*0.45;                       /* entraits croisés relevés au centre */
+      web(-S/2,H, 0,cy, z, 0.07); web(S/2,H, 0,cy, z, 0.07);
+      web(0,cy, 0,ridgeY, z, 0.05);
+    } else if(tt!=='portique'){
+      memI(-S/2,H, S/2,H, z, beamPI);           /* entrait (membrure basse) */
+      if(tt==='ferme_w'){
+        web(0,H, 0,ridgeY, z, 0.05);
+        for(var sg=-1;sg<=1;sg+=2){ var rmx=sg*(S/2)*0.5, rmy=H+rise*0.5;
+          web(sg*S/2,H, rmx,rmy, z, 0.05); web(rmx,rmy, 0,H, z, 0.05); }
+      } else if(tt==='polonceau'){
+        web(0,H, 0,ridgeY, z, 0.05);
+        for(var sg=-1;sg<=1;sg+=2){ var rmx=sg*(S/2)*0.5, rmy=H+rise*0.5;
+          web(rmx,rmy, rmx,H, z, 0.05); web(rmx,H, 0,ridgeY, z, 0.04); }
+      } else {                                   /* treillis (N) */
+        var np=Math.max(2, Math.round((S/2)/1.5));
+        for(var sg2=-1;sg2<=1;sg2+=2){ for(var k=1;k<np;k++){ var t=k/np, x=sg2*(S/2)*(1-t), ty=H+rise*t;
+          web(x,H, x,ty, z, 0.06);
+          var tp=(k-1)/np, xp=sg2*(S/2)*(1-tp); web(xp,H, x,ty, z, 0.05);
+        } }
+      }
+    }
+    /* goussets d'assemblage : jarrets aux genoux (poteau/arbalétrier) + faîtage */
+    if(PHANGAR.gussets){
+      var hd=Math.min(0.55,H*0.20), gl=Math.min(1.4,(S/2)*0.18), gt=beamB;
+      for(var gs=-1;gs<=1;gs+=2){
+        var ndx=-gs*Math.sin(p), ndy=-Math.cos(p);   /* sous la membrure du rafter */
+        var q1=[gs*S/2 + ndx*beamH/2, H + ndy*beamH/2];
+        var q2=[gs*S/2 + (-gs*Math.cos(p))*gl + ndx*beamH/2, H + Math.sin(p)*gl + ndy*beamH/2];
+        var q3=[gs*S/2 - gs*colH/2, H - hd];
+        triPrism([q1,q2,q3], z, gt, cOss);
+      }
+      var ag=Math.min(1.0,(S/2)*0.13);
+      triPrism([[0,ridgeY-beamH/2],[-Math.cos(p)*ag, ridgeY-Math.sin(p)*ag-beamH/2],[Math.cos(p)*ag, ridgeY-Math.sin(p)*ag-beamH/2]], z, gt, cOss);
+    }
+  }
+  /* --- LISSES HORIZONTALES (traverses de bardage) + CONTREVENTEMENT (croix de St-André) --- */
+  _CURTEX=FINISH_TEX.hossature;
+  var gN=Math.max(0,PHANGAR.girts|0);
+  for(var gi=1;gi<=gN;gi++){ var gy=H*gi/(gN+1);
+    box(-S/2, gy, 0, 0.05,0.12,L, cOss,1); box(S/2, gy, 0, 0.05,0.12,L, cOss,1);
+    box(0, gy, -halfL, S,0.12,0.05, cOss,1); box(0, gy, halfL, S,0.12,0.05, cOss,1);
+  }
+  if(PHANGAR.bracing){ var bayL=L/bays, bt=0.04, bw=0.05;
+    var zbays = bays>=2 ? [[-halfL,-halfL+bayL],[halfL-bayL,halfL]] : [[-halfL,halfL]];
+    for(var bi=0;bi<zbays.length;bi++){ var z0=zbays[bi][0], z1=zbays[bi][1];
+      for(var xb=-1;xb<=1;xb+=2){
+        barYZ(xb*S/2, 0,z0, H,z1, bt,bw, cOss); barYZ(xb*S/2, 0,z1, H,z0, bt,bw, cOss);
+      }
+    }
+  }
+  _CURTEX=null;
+  /* --- PANNES + TOITURE — placement 'dessus' la structure ou 'plan' (dans le plan) --- */
+  var nP=Math.max(2,PHANGAR.purlins|0), pH=0.12, isoT=0.10, skin=0.04;
+  var dessus=(PHANGAR.purlinMode!=='plan');
+  var pOff=dessus?(beamH/2+pH/2):0, baseOff=dessus?(beamH/2+pH):(beamH/2);
+  _CURTEX=FINISH_TEX.hossature;
+  for(var sgn2=-1;sgn2<=1;sgn2+=2){ for(var k2=0;k2<=nP;k2++){ var t2=k2/nP, x2=sgn2*(S/2)*(1-t2), yr=H+rise*t2;
+    box(x2 + sgn2*Math.sin(p)*pOff, yr + Math.cos(p)*pOff, 0, 0.08, pH, L, cOss,1); } }
+  _CURTEX=null;
+  for(var rs=-1;rs<=1;rs+=2){
+    var off=baseOff;
+    if(PHANGAR.roofIso){ _CURTEX=null; var oi=off+isoT/2;
+      hStrut(rs*S/2+rs*Math.sin(p)*oi, H+Math.cos(p)*oi, rs*Math.sin(p)*oi, ridgeY+Math.cos(p)*oi, 0, isoT, L, cIso); off+=isoT; }
+    _CURTEX=FINISH_TEX.hbardage; var os=off+skin/2;
+    hStrut(rs*S/2+rs*Math.sin(p)*os, H+Math.cos(p)*os, rs*Math.sin(p)*os, ridgeY+Math.cos(p)*os, 0, skin, L, cBard);
+    /* nervures / ondulation / joint debout */
+    var cvT={bac:[0.27,0.045,0.07,90],ondule:[0.105,0.022,0.075,180],joint:[0.5,0.05,0.02,60]}[PHANGAR.roofCover];
+    if(cvT){ var nrib=Math.max(2,Math.round(L/cvT[0])); if(nrib>cvT[3]) nrib=cvT[3]; var stp=L/nrib, oR=off+skin+cvT[1]/2;
+      var ax0=rs*S/2+rs*Math.sin(p)*oR, ay0=H+Math.cos(p)*oR, bx0=rs*Math.sin(p)*oR, by0=ridgeY+Math.cos(p)*oR;
+      for(var ir=0;ir<nrib;ir++){ hStrut(ax0,ay0,bx0,by0, -halfL+(ir+0.5)*stp, cvT[1], cvT[2], cBard); } }
+    _CURTEX=null;
+  }
+  /* --- RIVES : egout (longueur) replie vers l'exterieur + rive de rejet pignon + faitiere --- */
+  if(PHANGAR.rives){
+    var cvH=(PHANGAR.roofCover==='bac')?0.045:(PHANGAR.roofCover==='ondule')?0.022:(PHANGAR.roofCover==='joint')?0.05:0;
+    var rTop=baseOff+(PHANGAR.roofIso?isoT:0)+skin+cvH;
+    var wOut=(PHANGAR.wall==='bardage')?(colH/2+0.07):(PHANGAR.wall==='parpaing')?0.10:0.05;
+    var gOut=(PHANGAR.wall==='bardage')?(colB/2+0.07):(PHANGAR.wall==='parpaing')?0.10:0.05;
+    /* retombée des rives = épaisseur du complexe de toiture à masquer (iso + panneau
+       + nervures + pannes), bornée, pour couvrir proprement la tranche quels que soient
+       les réglages d'isolation / position des pannes / couverture */
+    var edgeCov=(rTop-baseOff)+(dessus?pH:0)+0.06, legH=Math.max(0.12,Math.min(0.6,edgeCov));
+    _CURTEX=FINISH_TEX.hbardage;
+    /* rive d'egout (sur la longueur) : bavette pliee, posee sur le toit, debordant au-dela
+       de la peau exterieure, retombee verticale sur le mur + larmier (goutte d'eau) */
+    for(var rs=-1;rs<=1;rs+=2){
+      var Nx=rs*Math.sin(p), Ny=Math.cos(p);
+      var XoMag=Math.max(S/2+wOut+0.03, S/2+Math.sin(p)*rTop+0.05), Xo=rs*XoMag;
+      var Ee=[rs*S/2+Nx*rTop, H+Ny*rTop];
+      var pe=[
+        [rs*S/2 - rs*Math.cos(p)*0.18 + Nx*rTop, H+Math.sin(p)*0.18+Ny*rTop],
+        Ee, [Xo, Ee[1]], [Xo, Ee[1]-legH], [Xo - rs*0.03, Ee[1]-legH-0.02] ];
+      var dep=L+gOut*2+0.02;
+      for(var ke=0;ke<pe.length-1;ke++)
+        hStrut(pe[ke][0],pe[ke][1],pe[ke+1][0],pe[ke+1][1],0,0.03,dep,cBard);
+    }
+    /* rive de rejet (pignon) : plat sur le toit (85) -> bavette verticale sur le mur (165) -> ourlet (15) */
+    for(var rs2=-1;rs2<=1;rs2+=2){ for(var gz=-1;gz<=1;gz+=2){
+      var Nx2=rs2*Math.sin(p), Ny2=Math.cos(p);
+      var Fe=[rs2*S/2+Nx2*rTop, H+Ny2*rTop], Fr=[0, ridgeY+Ny2*rTop];
+      var zIn=gz*(halfL-0.085), zEd=gz*halfL, zFc=gz*(halfL+gOut+0.015);
+      var Ae=[ [Fe[0],Fe[1],zIn],[Fe[0],Fe[1],zEd],[Fe[0],Fe[1],zFc],[Fe[0],Fe[1]-legH,zFc],[Fe[0],Fe[1]-legH-0.01,zFc-gz*0.015] ];
+      var Br=[ [Fr[0],Fr[1],zIn],[Fr[0],Fr[1],zEd],[Fr[0],Fr[1],zFc],[Fr[0],Fr[1]-legH,zFc],[Fr[0],Fr[1]-legH-0.01,zFc-gz*0.015] ];
+      hRib2(Ae,Br,0.03,cBard);
+    }}
+    /* faitiere */
+    var yr=ridgeY+rTop+0.05;
+    hStrut(-0.45, yr-0.45*Math.tan(p), 0, yr, 0, 0.05, L+gOut*2+0.06, cBard);
+    hStrut( 0.45, yr-0.45*Math.tan(p), 0, yr, 0, 0.05, L+gOut*2+0.06, cBard);
+    _CURTEX=null;
+  }
+  /* --- MURS --- */
+  if(PHANGAR.wall==='aucun'){ /* structure ouverte, sans murs */ }
+  else if(PHANGAR.wall==='parpaing'){
+    /* remplissage parpaing DANS le plan de la structure (entre poteaux) */
+    _CURTEX=FINISH_TEX.hbeton;
+    box(-S/2,H/2,0, 0.2,H,L, cBet,1); box(S/2,H/2,0, 0.2,H,L, cBet,1);
+    box(0,H/2,-halfL, S,H,0.2, cBet,1); box(0,H/2,halfL, S,H,0.2, cBet,1);
+    hGable(-halfL,0.2,S,H,ridgeY,cBet); hGable(halfL,0.2,S,H,ridgeY,cBet);
+    _CURTEX=null;
+  } else {
+    /* bardage métallique = peau EXTÉRIEURE, hors structure */
+    var exW=colH/2+0.05, exG=colB/2+0.05;
+    _CURTEX=FINISH_TEX.hbardage;
+    box(-S/2-exW,H/2,0, 0.04,H,L+2*exG, cBard,1); box(S/2+exW,H/2,0, 0.04,H,L+2*exG, cBard,1);
+    box(0,H/2,-halfL-exG, S+2*exW,H,0.04, cBard,1); box(0,H/2,halfL+exG, S+2*exW,H,0.04, cBard,1);
+    hGable(-halfL-exG,0.04,S,H,ridgeY,cBard); hGable(halfL+exG,0.04,S,H,ridgeY,cBard);
+    /* relief du bardage : nervuré / ondulé / cassette, posé vertical ou horizontal */
+    var BT={nervure:[0.30,0.035,0.06],ondule:[0.12,0.02,0.07],cassette:[1.2,0.012,0.03]}[PHANGAR.bardType];
+    if(BT){ var bp=BT[0], bpr=BT[1], brw=BT[2], vert=(PHANGAR.bardDir!=='horiz');
+      function ribsW(nax,pn,sgn,len,hgt){
+        var po=pn+sgn*(0.02+bpr/2);
+        if(vert){ var nn=Math.max(2,Math.round(len/bp)); if(nn>60)nn=60; var st=len/nn;
+          for(var k=0;k<nn;k++){ var tt=-len/2+(k+0.5)*st;
+            if(nax==='x') box(po,hgt/2,tt, bpr,hgt,brw, cBard,1); else box(tt,hgt/2,po, brw,hgt,bpr, cBard,1); } }
+        else { var nn2=Math.max(2,Math.round(hgt/bp)); if(nn2>40)nn2=40; var st2=hgt/nn2;
+          for(var k2=0;k2<nn2;k2++){ var yy=(k2+0.5)*st2;
+            if(nax==='x') box(po,yy,0, bpr,brw,len, cBard,1); else box(0,yy,po, len,brw,bpr, cBard,1); } }
+      }
+      /* pignons : bardage montant jusqu'au faîtage en suivant la pente du toit */
+      function ribsGable(pn,sgn){
+        var po=pn+sgn*(0.02+bpr/2), rise2=ridgeY-H;
+        if(vert){ var nn=Math.max(2,Math.round(S/bp)); if(nn>60)nn=60; var st=S/nn;
+          for(var k=0;k<nn;k++){ var xx=-S/2+(k+0.5)*st, topY=H+rise2*(1-Math.abs(xx)/(S/2));
+            box(xx, topY/2, po, brw, topY, bpr, cBard,1); } }
+        else { var nn2=Math.max(2,Math.round(ridgeY/bp)); if(nn2>50)nn2=50; var st2=ridgeY/nn2;
+          for(var k2=0;k2<nn2;k2++){ var yy=(k2+0.5)*st2, xs=(yy<=H)?S/2:(S/2)*(1-(yy-H)/rise2);
+            if(xs>0.03) box(0, yy, po, 2*xs, brw, bpr, cBard,1); } }
+      }
+      ribsW('x', S/2+exW, 1, L, H); ribsW('x', -(S/2+exW), -1, L, H);
+      ribsGable(halfL+exG, 1); ribsGable(-(halfL+exG), -1);
+    }
+    /* cornières d'angle en L : referment le joint vertical entre façade et pignon */
+    if(PHANGAR.cornAngle!==false){
+      _CURTEX=FINISH_TEX.hcorner; var XW=S/2+exW+0.02, ZG=halfL+exG+0.02, ct=0.03, Lg=0.14;
+      for(var xs=-1;xs<=1;xs+=2){ for(var zs=-1;zs<=1;zs+=2){
+        var Xo=xs*XW, Zo=zs*ZG;
+        box(Xo+xs*ct/2, H/2, Zo+zs*(ct-Lg)/2, ct, H, ct+Lg, cCorn,1);
+        box(Xo+xs*(ct-Lg)/2, H/2, Zo+zs*ct/2, ct+Lg, H, ct, cCorn,1);
+      }}
+      _CURTEX=null;
+    }
+    if(PHANGAR.wallIso){ _CURTEX=null;
+      box(-S/2-exW+0.05,H/2,0,0.06,H,L,cIso,1); box(S/2+exW-0.05,H/2,0,0.06,H,L,cIso,1);
+      box(0,H/2,-halfL-exG+0.05,S,H,0.06,cIso,1); box(0,H/2,halfL+exG-0.05,S,H,0.06,cIso,1);
+    }
+    _CURTEX=null;
+  }
+  /* --- DALLES (RDC + étages) --- */
+  if(PHANGAR.slabRDC){ _CURTEX=FINISH_TEX.hbeton; box(0,-0.10,0, S-0.1,0.20,L-0.1, cBet,1); _CURTEX=null; }
+  var nf=Math.max(0,PHANGAR.floors|0);
+  if(nf>0){ var thk0=hSlabThk(PHANGAR.slabType), P=Math.max(2.2,PHANGAR.floorH/100)+thk0;
+    var fc=Math.max(0.2,Math.min(1,(PHANGAR.floorCover||100)/100)), Lf=L*fc, zc=-L/2+Lf/2;
+    for(var fi=1;fi<=nf;fi++){ hSlab(fi*P, S, Lf, zc, PHANGAR.slabType, cBet, cOss); }
+  }
+  DIMS={ w:S, h:ridgeY+0.4, d:L };
+  return DIMS;
+}
+function buildHangarUI(){
+  var P=PHANGAR;
+  var groups=[
+    {title:'Dimensions', fields:[
+      {type:'slider',label:'Portée (largeur)',unit:'cm',key:'span',min:400,max:4000,step:10},
+      {type:'slider',label:'Longueur',unit:'cm',key:'length',min:600,max:12000,step:10},
+      {type:'slider',label:'Hauteur au mur',unit:'cm',key:'height',min:250,max:1500,step:10},
+      {type:'slider',label:'Travées',unit:'',key:'bays',min:1,max:24,step:1},
+      {type:'slider',label:'Pente toiture',unit:'°',key:'pitch',min:0,max:35,step:1}]},
+    {title:'Ossature', fields:[
+      {type:'choice',key:'truss',options:[{id:'portique',l:'Portique'},{id:'treillis',l:'Treillis (N)'},{id:'ferme_w',l:'Ferme W'},{id:'polonceau',l:'Polonceau'},{id:'ciseaux',l:'Ciseaux'}]},
+      {type:'slider',label:'Pannes / pan',unit:'',key:'purlins',min:2,max:14,step:1},
+      {type:'choice',label:'Position pannes',key:'purlinMode',options:[{id:'dessus',l:'Sur structure'},{id:'plan',l:'Dans le plan'}]},
+      {type:'choice',label:'Goussets d\u2019assemblage',key:'gussets',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]},
+      {type:'choice',label:'Profilés',key:'iProfiles',options:[{id:true,l:'En I'},{id:false,l:'Rectang.'}]},
+      {type:'slider',label:'Lisses horiz.',unit:'',key:'girts',min:0,max:6,step:1},
+      {type:'choice',label:'Contreventement',key:'bracing',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}]},
+    {title:'Profil des poteaux', fields:[
+      {type:'steelSerie',key:'colSerie',sizeKey:'colSize'},
+      {type:'steelSize',serieKey:'colSerie',key:'colSize'}]},
+    {title:'Profil des arbalétriers', fields:[
+      {type:'steelSerie',key:'beamSerie',sizeKey:'beamSize'},
+      {type:'steelSize',serieKey:'beamSerie',key:'beamSize'}]},
+    {title:'Fondations', fields:[
+      {type:'choice',key:'found',options:[{id:'filantes',l:'Filantes'},{id:'massifs',l:'Massifs'}]},
+      {type:'slider',label:'Largeur',unit:'cm',key:'foundW',min:20,max:150,step:5},
+      {type:'slider',label:'Hauteur',unit:'cm',key:'foundH',min:20,max:150,step:5}]},
+    {title:'Enveloppe', fields:[
+      {type:'choice',key:'wall',options:[{id:'bardage',l:'Bardage métal'},{id:'parpaing',l:'Parpaing'},{id:'aucun',l:'Aucun (ouvert)'}]},
+      {type:'choice',label:'Isolation murs',key:'wallIso',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]},
+      {type:'choice',label:'Isolation toiture',key:'roofIso',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]},
+      {type:'choice',label:'Couverture',key:'roofCover',options:[{id:'bac',l:'Bac acier'},{id:'ondule',l:'Ondul\u00e9'},{id:'joint',l:'Joint debout'},{id:'sandwich',l:'Sandwich'}]},
+      {type:'choice',label:'Profil bardage',key:'bardType',options:[{id:'nervure',l:'Nervur\u00e9'},{id:'ondule',l:'Ondul\u00e9'},{id:'cassette',l:'Cassette'},{id:'plan',l:'Lisse'}]},
+      {type:'choice',label:'Pose bardage',key:'bardDir',options:[{id:'vert',l:'Verticale'},{id:'horiz',l:'Horizontale'}]},
+      {type:'choice',label:'Cornières d\u2019angle',key:'cornAngle',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]}]},
+    {title:'Rives', fields:[
+      {type:'choice',key:'rives',options:[{id:true,l:'Avec rives'},{id:false,l:'Sans'}]}]},
+    {title:'Planchers', fields:[
+      {type:'choice',label:'Dalle RDC',key:'slabRDC',options:[{id:true,l:'Avec'},{id:false,l:'Sans'}]},
+      {type:'slider',label:'Étages',unit:'',key:'floors',min:0,max:6,step:1},
+      {type:'slider',label:'Hauteur libre',unit:'cm',key:'floorH',min:220,max:600,step:5},
+      {type:'slider',label:'Couverture étage',unit:'%',key:'floorCover',min:20,max:100,step:5},
+      {type:'choice',label:'Type de dalle',key:'slabType',options:[{id:'beton',l:'Béton'},{id:'collaborant',l:'Bac collab.'},{id:'metal',l:'Ossature métal'}]}]}
+  ];
+  buildObjUI(P, groups, buildHangarUI);
+}
+
 function build(){
   FC=[]; PRIMS=[];
   /* texture courante par défaut = celle de l'élément "forme" (objets simples).
@@ -2893,6 +3251,7 @@ function build(){
   else if(MODE==='fenetre'){ r=buildFenetre(); }
   else if(MODE==='murrideau'){ r=buildMurRideau(); }
   else if(MODE==='furn'){ r=buildFurniture(); }
+  else if(MODE==='hangar'){ r=buildHangar(); }
   else if(MODE==='quadripod'){
     r = (AL_PRODUCT==='woo') ? buildWoo()
       : (AL_PRODUCT==='bureau') ? buildBureau()
@@ -2921,7 +3280,7 @@ function fitCamera(dims){
   var f=2.14;
   var dist=R*f/0.78;
   /* bornes raisonnables (cohérentes avec le zoom molette/pinch) */
-  CAM.r = Math.max(0.6, Math.min(14, dist));
+  CAM.r = Math.max(0.6, Math.min(200, dist));
   CAM.ty = h/2;     /* vise le centre en hauteur */
 }
 
@@ -3873,9 +4232,16 @@ window.addEventListener('mousemove', function(e){
   DIRTY=true;
 });
 cv.addEventListener('wheel', function(e){
-  CAM.r = Math.max(0.5, Math.min(14, CAM.r + e.deltaY*0.003)); DIRTY=true; /* zoom */
+  CAM.r = Math.max(0.4, Math.min(200, CAM.r*(1+e.deltaY*0.0012))); DIRTY=true; /* zoom proportionnel */
   e.preventDefault();
 }, {passive:false});
+/* bouton Recentrer : recadre la caméra du moteur actif sur l'objet courant */
+var _rc=document.getElementById('recenter');
+if(_rc) _rc.onclick=function(){
+  if(WGL.txActive && WGL.texModel){ var d=WGL.texModel.dim; WGL.cam.r=Math.hypot(d[0],d[1],d[2])*1.05; WGL.cam.ty=d[1]/2; WGL.render(); }
+  else if(WGL.gActive){ WGL.cam.r=Math.hypot(DIMS.w,DIMS.h,DIMS.d)*1.15; WGL.cam.ty=DIMS.h/2; WGL.render(); }
+  else { fitCamera(DIMS); DIRTY=true; }
+};
 
 /* --- Édition d'une cote au DOUBLE-CLIC ---
    On cherche la cote la plus proche du curseur ; si elle est assez proche, on
@@ -3950,7 +4316,7 @@ cv.addEventListener('touchmove', function(e){
   if(e.touches.length===2){
     var dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
     var p=Math.sqrt(dx*dx+dy*dy);
-    CAM.r = Math.max(0.5, Math.min(14, CAM.r - (p-lastPinch)*0.01));
+    CAM.r = Math.max(0.4, Math.min(200, CAM.r*(1-(p-lastPinch)*0.006)));
     lastPinch=p;
   }
 }, {passive:false});
@@ -4554,6 +4920,7 @@ function finishKey(){
   if(MODE==='fenetre') return FINISH_TARGET;   /* fcadre | fouvrant | fpoignee */
   if(MODE==='murrideau') return FINISH_TARGET; /* cwframe | cwspandrel | cwvent */
   if(MODE==='furn') return FINISH_TARGET;      /* fstruct | fgarn */
+  if(MODE==='hangar') return FINISH_TARGET;    /* hossature | hbardage | hbeton */
   if(GENERIC_FINISH_MODES[MODE]) return 'objet';
   return FINISH_TARGET;   /* corps | etagere | porte */
 }
@@ -4562,7 +4929,7 @@ function finishKey(){
 function buildFinishElems(){
   var host=document.getElementById('finish-elems');
   host.innerHTML='';
-  var elems = (MODE==='meuble')?FINISH_ELEMS_MEUBLE : (MODE==='porte')?FINISH_ELEMS_PORTE : (MODE==='fenetre')?FINISH_ELEMS_FENETRE : (MODE==='murrideau')?FINISH_ELEMS_MURRIDEAU : (MODE==='furn')?FINISH_ELEMS_FURN : null;
+  var elems = (MODE==='meuble')?FINISH_ELEMS_MEUBLE : (MODE==='porte')?FINISH_ELEMS_PORTE : (MODE==='fenetre')?FINISH_ELEMS_FENETRE : (MODE==='murrideau')?FINISH_ELEMS_MURRIDEAU : (MODE==='furn')?FINISH_ELEMS_FURN : (MODE==='hangar')?FINISH_ELEMS_HANGAR : null;
   if(!elems){ host.style.display='none'; return; }
   /* recale la cible si elle n'appartient pas a l'objet courant */
   if(!elems.some(function(e){return e.id===FINISH_TARGET;})) FINISH_TARGET=elems[0].id;
@@ -4965,6 +5332,7 @@ function refreshView(){
       else if(cat.id==='fenetre'){ buildFenetreUI(); }
       else if(cat.id==='murrideau'){ buildMurRideauUI(); }
       else if(cat.id==='objets'){ buildFurnUI(); }
+      else if(cat.id==='hangar'){ buildHangarUI(); }
       else { buildUI(); }
       buildFinishUI();   /* panneau Finition pour tous les objets parametriques */
       updateDims();
@@ -5083,7 +5451,11 @@ function dlFile(name, text, mime){
 }
 
 /* Nom de fichier selon l'objet courant */
-function curName(){ return MODE==='forme' ? SHAPE : 'meuble'; }
+function curName(){
+  if(MODE==='forme') return SHAPE;
+  var N={hangar:'Hangar BPO',mur:'Mur BPO',dalle:'Dalle BPO',poteau:'Poteau BPO',poutre:'Poutre BPO',gardecorps:'Garde-corps BPO',porte:'Porte BPO',fenetre:'Fenetre BPO',murrideau:'Mur-rideau BPO',furn:'Mobilier BPO'};
+  return N[MODE]||'meuble';
+}
 
 /* exportOBJ() : sommets (v) + normales (vn) + faces (f v//vn).
    Les normales par sommet font que Lumion/Blender affichent une surface LISSE
@@ -5370,10 +5742,23 @@ function exportIFC(){
   /* placement de l'objet meuble */
   var objPl=E("IFCLOCALPLACEMENT("+stPl+","+wcs+")");
 
-  /* l'objet de mobilier */
-  var furn=E("IFCFURNISHINGELEMENT('"+guid()+"',"+owner+",'"+stepEsc(nm)+"','Meuble parametrique - (c) 2026 Antoine Lacronique, architecte',$,"+objPl+","+prodShape+",$)");
+  /* entité IFC adaptée au type d'objet (catégorie correcte à l'import BIM) :
+     ouvrage de bâtiment plutôt que mobilier pour les éléments architecturaux */
+  var ent,tail,dsc;
+  if(MODE==='hangar'){ ent='IFCBUILDINGELEMENTPROXY'; tail=',$,.ELEMENT.'; dsc='Batiment / hangar parametrique'; }
+  else if(MODE==='mur'){ ent='IFCWALL'; tail=',$,.NOTDEFINED.'; dsc='Mur parametrique'; }
+  else if(MODE==='dalle'){ ent='IFCSLAB'; tail=',$,.FLOOR.'; dsc='Dalle parametrique'; }
+  else if(MODE==='poteau'){ ent='IFCCOLUMN'; tail=',$,.COLUMN.'; dsc='Poteau parametrique'; }
+  else if(MODE==='poutre'){ ent='IFCBEAM'; tail=',$,.BEAM.'; dsc='Poutre parametrique'; }
+  else if(MODE==='gardecorps'){ ent='IFCRAILING'; tail=',$,.NOTDEFINED.'; dsc='Garde-corps parametrique'; }
+  else if(MODE==='murrideau'){ ent='IFCCURTAINWALL'; tail=',$,.NOTDEFINED.'; dsc='Mur-rideau parametrique'; }
+  else if(MODE==='porte'){ ent='IFCDOOR'; tail=',$,$,$,.DOOR.,.NOTDEFINED.,$'; dsc='Porte parametrique'; }
+  else if(MODE==='fenetre'){ ent='IFCWINDOW'; tail=',$,$,$,.WINDOW.,.NOTDEFINED.,$'; dsc='Fenetre parametrique'; }
+  else if(MODE==='forme'){ ent='IFCBUILDINGELEMENTPROXY'; tail=',$,.ELEMENT.'; dsc='Element parametrique'; }
+  else { ent='IFCFURNISHINGELEMENT'; tail=',$'; dsc='Meuble parametrique'; }
+  var furn=E(ent+"('"+guid()+"',"+owner+",'"+stepEsc(nm)+"','"+dsc+" - (c) 2026 Antoine Lacronique, architecte',$,"+objPl+","+prodShape+tail+")");
 
-  /* rattache le meuble à l'étage */
+  /* rattache l'objet à l'étage */
   E("IFCRELCONTAINEDINSPATIALSTRUCTURE('"+guid()+"',"+owner+",$,$,("+furn+"),"+storey+")");
 
   /* --- assemblage du fichier STEP --- */
