@@ -191,6 +191,8 @@ input[type=color]{width:100%;height:28px;border:1px solid var(--ln);border-radiu
   .cat-list{flex-direction:column;gap:3px;margin-bottom:11px;}
   .cat-list button{padding:7px 10px;}
 }
+/* Téléphone en paysage : panneau Paramètres plus étroit (280px, comme avant) pour laisser respirer le viewport ; ordinateur reste à 380px. */
+@media (orientation:landscape) and (max-height:500px){#app{grid-template-columns:190px 1fr 280px;}}
 </style>
 </head>
 <body>
