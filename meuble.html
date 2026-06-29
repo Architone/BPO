@@ -3560,6 +3560,7 @@ function buildTechnal(){
     else if(type==='frappe'){ var left=(ci<nv/2); a=aDeg*Math.PI/180*dirS; T= left?rotT(sxl,a,1):rotT(sxr,a,-1); handleEdge= left?1:-1; }
     else if(type==='oscillo'){ a=(aDeg/100)*0.26*dirS; T=rotXT(iy0,a,1); }
     else if(type==='coulissant'){ var slide=(aDeg/100)*colW*0.9*((ci%2)?-1:1), zf=(ci%2)?fd*0.18:-fd*0.18; T=(function(sl,zz){return function(p){return [p[0]+sl,p[1],p[2]+zz];};})(slide,zf); doHandle=(ci%2===0); }
+    else if(type==='soufflet'){ a=(aDeg/100)*0.26*dirS; T=rotXT(iy1,a,-1); }
     else { T=function(p){return p;}; doHandle=false; }
     buildSashT(T, sxl,sxr, iy0,iy1, 0, sw, colO,colG,colH, PTECH.cvert,PTECH.choriz, doHandle, handleEdge);
   }
@@ -3567,13 +3568,13 @@ function buildTechnal(){
 }
 function buildTechnalUI(){
   var P=PTECH, opening=(P.type!=='fixe'), swing=(P.type==='frappe'||P.type==='oscillo');
-  var coul=(P.type==='coulissant'), openLabel=coul?'Glissement':(P.type==='oscillo'?'Bascule':'Ouverture');
-  var openUnit=(coul||P.type==='oscillo')?'%':'°', openMax=(coul||P.type==='oscillo')?100:110;
+  var coul=(P.type==='coulissant'), tilt=(P.type==='oscillo'||P.type==='soufflet'), openLabel=coul?'Glissement':(tilt?'Bascule':'Ouverture');
+  var openUnit=(coul||tilt)?'%':'°', openMax=(coul||tilt)?100:110;
   if(P.open>openMax) P.open=openMax;
   var groups=[
     {title:'Dimensions standard', fields:[{type:'choice',key:'std',options:TECH_STD.map(function(s){return {id:s[0],l:s[1]};})}]},
     {title:'Type d’ouverture', fields:[{type:'choice',key:'type',options:[
-      {id:'frappe',l:'Frappe'},{id:'oscillo',l:'Oscillo-battant'},{id:'coulissant',l:'Coulissant'},{id:'fixe',l:'Fixe'}]}].concat(opening?[
+      {id:'frappe',l:'Frappe'},{id:'oscillo',l:'Oscillo-battant'},{id:'coulissant',l:'Coulissant'},{id:'soufflet',l:'Soufflet'},{id:'fixe',l:'Fixe'}]}].concat(opening?[
       {type:'slider',label:openLabel,unit:openUnit,key:'open',min:0,max:openMax,step:1}]:[])}
   ];
   if(P.std==='libre') groups.push({title:'Dimensions', fields:[
@@ -3619,60 +3620,56 @@ function buildVelux(){
   if(PVELUX.size!=='libre'){ for(var s=0;s<VELUX_SIZES.length;s++){ if(VELUX_SIZES[s][0]===PVELUX.size){ PVELUX.w=VELUX_SIZES[s][2]; PVELUX.h=VELUX_SIZES[s][3]; break; } } }
   var W=PVELUX.w/100, H=PVELUX.h/100;
   var Pr=Math.max(10,Math.min(80,PVELUX.slope))*Math.PI/180, sP=Math.sin(Pr), cP=Math.cos(Pr);
-  function TR(p){ return [p[0], p[1]*sP + p[2]*cP, -p[1]*cP + p[2]*sP]; }
-  var colI = (PVELUX.finish==='pin')?[198,164,114]:(PVELUX.finish==='blancpu')?[244,244,242]:[236,236,231];
-  var colExt=[92,94,98], colG=(PVELUX.vitr==='fume')?[105,110,120]:[150,200,235];
+  var LIFT=1.6;
+  function TR(p){ return [p[0], LIFT + p[1]*sP + p[2]*cP, -p[1]*cP + p[2]*sP]; }
+  var colI=(PVELUX.finish==='pin')?[198,164,114]:(PVELUX.finish==='blancpu')?[244,244,242]:[236,236,231];
+  var colExt=[118,120,124], colG=(PVELUX.vitr==='fume')?[105,110,120]:[150,200,235];
   var fw=0.07, fd=0.11;
   _IFCTAG=null;
-  /* contexte toiture : 4 pans autour de l'ouverture (laisse le trou libre) */
-  if(PVELUX.context){ var rc=[168,166,162], mB=0.55, t=0.05, zc=-0.035; _CURTEX=null;
+  if(PVELUX.context){ var rc=[170,168,164], mB=Math.max(0.6, W*0.5), t=0.06, zc=-0.04; _CURTEX=null;
     leafBox(TR, 0, H+mB/2, zc, W+2*mB, mB, t, rc,1);
     leafBox(TR, 0, -mB/2, zc, W+2*mB, mB, t, rc,1);
     leafBox(TR, -W/2-mB/2, H/2, zc, mB, H, t, rc,1);
     leafBox(TR, W/2+mB/2, H/2, zc, mB, H, t, rc,1);
   }
-  /* dormant (cadre fixe) dans le plan du toit */
-  _CURTEX=FINISH_TEX.vcadre;
-  leafBox(TR, 0, fw/2, 0, W, fw, fd, colI,1);
-  leafBox(TR, 0, H-fw/2, 0, W, fw, fd, colI,1);
-  leafBox(TR, -W/2+fw/2, H/2, 0, fw, H-2*fw, fd, colI,1);
-  leafBox(TR, W/2-fw/2, H/2, 0, fw, H-2*fw, fd, colI,1);
-  /* habillage alu extérieur (lèvre périphérique côté toit) */
   _CURTEX=null;
-  var ew=0.05, ez=fd*0.45;
+  leafBox(TR, 0, fw/2, 0, W, fw, fd, colExt,1);
+  leafBox(TR, 0, H-fw/2, 0, W, fw, fd, colExt,1);
+  leafBox(TR, -W/2+fw/2, H/2, 0, fw, H-2*fw, fd, colExt,1);
+  leafBox(TR, W/2-fw/2, H/2, 0, fw, H-2*fw, fd, colExt,1);
+  var ew=0.05, ez=fd*0.5;
   leafBox(TR, 0, H+ew/2, ez, W+2*ew, ew, 0.025, colExt,1);
   leafBox(TR, 0, -ew/2, ez, W+2*ew, ew, 0.025, colExt,1);
   leafBox(TR, -W/2-ew/2, H/2, ez, ew, H, 0.025, colExt,1);
   leafBox(TR, W/2+ew/2, H/2, ez, ew, H, 0.025, colExt,1);
-  /* ouvrant : transformation d'ouverture (rotation centrale / projection) */
   var ix0=-W/2+fw, ix1=W/2-fw, iy0=fw, iy1=H-fw, iw=ix1-ix0, ih=iy1-iy0, mid=(iy0+iy1)/2;
-  var sw=0.05, th=0.05, off=fd*0.18, ap=(PVELUX.open/100);
+  var sw=0.05, off=fd*0.10, ap=(PVELUX.open/100), openable=(PVELUX.type!=='fixe');
   var sashT;
-  if(PVELUX.type==='projection'){ var ang=ap*0.7, c=Math.cos(ang), s=Math.sin(ang);
-    sashT=function(p){ var dy=p[1]-iy1, dz=p[2]; return TR([p[0], iy1+dy*c - dz*s, dy*s + dz*c]); };
-  } else { var ang2=-ap*1.35, c2=Math.cos(ang2), s2=Math.sin(ang2);
-    sashT=function(p){ var dy=p[1]-mid, dz=p[2]; return TR([p[0], mid+dy*c2 - dz*s2, dy*s2 + dz*c2]); };
+  if(PVELUX.type==='projection'){ var ang=ap*0.7, c=Math.cos(ang), s2=Math.sin(ang);
+    sashT=function(p){ var dy=p[1]-iy1, dz=p[2]; return TR([p[0], iy1+dy*c - dz*s2, dy*s2 + dz*c]); };
+  } else if(PVELUX.type==='rotation'){ var ang2=-ap*1.35, c2=Math.cos(ang2), s3=Math.sin(ang2);
+    sashT=function(p){ var dy=p[1]-mid, dz=p[2]; return TR([p[0], mid+dy*c2 - dz*s3, dy*s3 + dz*c2]); };
+  } else { sashT=TR; }
+  var zExt=off+0.03, zInt=off-0.03;
+  function sashFrame(zc2,th,col){
+    leafBox(sashT, ix0+sw/2, mid, zc2, sw, ih, th, col,1);
+    leafBox(sashT, ix1-sw/2, mid, zc2, sw, ih, th, col,1);
+    leafBox(sashT, 0, iy1-sw/2, zc2, iw, sw, th, col,1);
+    leafBox(sashT, 0, iy0+sw/2, zc2, iw, sw, th, col,1);
   }
-  _CURTEX=FINISH_TEX.vouvrant;
-  leafBox(sashT, ix0+sw/2, mid, off, sw, ih, th, colI,1);
-  leafBox(sashT, ix1-sw/2, mid, off, sw, ih, th, colI,1);
-  leafBox(sashT, 0, iy1-sw/2, off, iw, sw, th, colI,1);
-  leafBox(sashT, 0, iy0+sw/2, off, iw, sw, th, colI,1);
-  _CURTEX=null;
-  leafBox(sashT, 0, mid, off, iw-2*sw, ih-2*sw, 0.016, colG,0.32);
-  /* barre de manœuvre supérieure */
-  _CURTEX=FINISH_TEX.vouvrant;
-  leafBox(sashT, 0, iy1-0.07, off+0.035, iw*0.5, 0.03, 0.035, colI,1);
-  _CURTEX=null;
-  DIMS={ w:W, h:H*sP+0.15, d:H*cP+fd+0.1 }; return DIMS;
+  _CURTEX=null; sashFrame(zExt, 0.03, colExt);
+  _CURTEX=FINISH_TEX.vouvrant; sashFrame(zInt, 0.035, colI);
+  _CURTEX=null; leafBox(sashT, 0, mid, off, iw-2*sw, ih-2*sw, 0.016, colG,0.32);
+  if(openable){ _CURTEX=FINISH_TEX.vouvrant; leafBox(sashT, 0, iy1-0.08, zInt-0.03, iw*0.5, 0.035, 0.03, colI,1); _CURTEX=null; }
+  DIMS={ w:W+0.3, h:2*LIFT + H*sP + 0.2, d:H*cP+fd+0.2 }; return DIMS;
 }
 function buildVeluxUI(){
   var P=PVELUX;
   var groups=[
     {title:'Taille standard', fields:[{type:'choice',key:'size',options:VELUX_SIZES.map(function(s){return {id:s[0],l:s[1]};})}]},
     {title:'Type d’ouverture', fields:[{type:'choice',key:'type',options:[
-      {id:'rotation',l:'Rotation (centre-pivot)'},{id:'projection',l:'Projection (haut)'}]},
-      {type:'slider',label:'Ouverture',unit:'%',key:'open',min:0,max:100,step:1}]}
+      {id:'rotation',l:'Rotation (centre-pivot)'},{id:'projection',l:'Projection (haut)'},{id:'fixe',l:'Fixe (non ouvrant)'}]}].concat(P.type!=='fixe'?[
+      {type:'slider',label:'Ouverture',unit:'%',key:'open',min:0,max:100,step:1}]:[])}
   ];
   if(P.size==='libre') groups.push({title:'Dimensions', fields:[
     {type:'slider',label:'Largeur',unit:'cm',key:'w',min:45,max:140,step:1},
