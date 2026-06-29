@@ -308,143 +308,155 @@
 </footer>
 
 <script>
- 
+/* ============================================================================
+   LE « O » DE BPO — sphère géodésique filaire 3D animée
+   ----------------------------------------------------------------------------
+   Vrais sommets répartis sur une sphère (spirale de Fibonacci), arêtes vers les
+   voisins proches, rotation 3D continue, projection perspective. Nœuds lumineux
+   bleus + halos, exactement dans l'esprit du logo BPO mais vivant.
+   ============================================================================ */
 (function(){
-var cv=document.getElementById('sphere');
-if(!cv) return;
-var ctx=cv.getContext('2d');
-var DPR=Math.min(window.devicePixelRatio||1,2);
-var SZ;
-function fit(){
-SZ=cv.clientWidth||200;
-cv.width=SZ*DPR; cv.height=SZ*DPR;
-ctx.setTransform(DPR,0,0,DPR,0,0);
-}
-fit();
-window.addEventListener('resize',fit);
- 
-var N=58, R=1, verts=[];
-var gold=Math.PI*(3-Math.sqrt(5));
-for(var i=0;i<N;i++){
-var y=1-(i/(N-1))*2;  
-var rad=Math.sqrt(1-y*y);
-var th=gold*i;
-verts.push([Math.cos(th)*rad, y, Math.sin(th)*rad]);
-}
- 
-var edges=[];
-for(var i=0;i<N;i++){
- 
-var ds=[];
-for(var j=0;j<N;j++) if(j!==i){
-var dx=verts[i][0]-verts[j][0],dy=verts[i][1]-verts[j][1],dz=verts[i][2]-verts[j][2];
-ds.push([dx*dx+dy*dy+dz*dz,j]);
-}
-ds.sort(function(a,b){return a[0]-b[0];});
-for(var k=0;k<3;k++){  
-var j=ds[k][1];
-var key=i<j?i+'_'+j:j+'_'+i;
-if(!edges._seen) edges._seen={};
-if(!edges._seen[key]){ edges._seen[key]=1; edges.push([i,j]); }
-}
-}
-var ang=0;
-function rotY(p,a){ var c=Math.cos(a),s=Math.sin(a); return [p[0]*c+p[2]*s, p[1], -p[0]*s+p[2]*c]; }
-function rotX(p,a){ var c=Math.cos(a),s=Math.sin(a); return [p[0], p[1]*c-p[2]*s, p[1]*s+p[2]*c]; }
-function frame(){
-ctx.clearRect(0,0,SZ,SZ);
-var cx=SZ/2, cy=SZ/2, scale=SZ*0.425, persp=2.6;
- 
-var P=[];
-for(var i=0;i<N;i++){
-var p=rotX(rotY(verts[i],ang),ang*0.45);
-var zc=p[2]+persp;
-var f=persp/zc;  
-P.push({x:cx+p[0]*scale*f, y:cy-p[1]*scale*f, z:p[2], f:f});
-}
- 
-var order=edges.slice().sort(function(a,b){
-return (P[a[0]].z+P[a[1]].z)-(P[b[0]].z+P[b[1]].z);
-});
-for(var e=0;e<order.length;e++){
-var a=P[order[e][0]], b=P[order[e][1]];
-var depth=( (a.z+b.z)/2 +1)/2;  
-var al=0.12+depth*0.55;
-ctx.strokeStyle='rgba(59,164,240,'+al.toFixed(3)+')';
-ctx.lineWidth=0.5+depth*1.0;
-ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-}
- 
-var nodeOrder=[];
-for(var i=0;i<N;i++) nodeOrder.push(i);
-nodeOrder.sort(function(a,b){return P[a].z-P[b].z;});
-for(var k=0;k<N;k++){
-var i=nodeOrder[k], p=P[i];
-var depth=(p.z+1)/2;
-var r=(0.9+depth*2.0);
- 
-var grd=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*4);
-grd.addColorStop(0,'rgba(120,196,250,'+(0.5+depth*0.45).toFixed(2)+')');
-grd.addColorStop(1,'rgba(120,196,250,0)');
-ctx.fillStyle=grd;
-ctx.beginPath(); ctx.arc(p.x,p.y,r*4,0,6.283); ctx.fill();
- 
-ctx.fillStyle='rgba(228,244,255,'+(0.55+depth*0.45).toFixed(2)+')';
-ctx.beginPath(); ctx.arc(p.x,p.y,r,0,6.283); ctx.fill();
-}
-ang+=0.006;
-if(!REDUCED) requestAnimationFrame(frame);
-}
-var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-if(REDUCED){ ang=0.6; frame(); }  
-else frame();
+  var cv=document.getElementById('sphere');
+  if(!cv) return;
+  var ctx=cv.getContext('2d');
+  var DPR=Math.min(window.devicePixelRatio||1,2);
+  var SZ;
+  function fit(){
+    SZ=cv.clientWidth||200;
+    cv.width=SZ*DPR; cv.height=SZ*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  fit();
+  window.addEventListener('resize',fit);
+
+  /* --- sommets sur une sphère via spirale de Fibonacci (répartition régulière) --- */
+  var N=58, R=1, verts=[];
+  var gold=Math.PI*(3-Math.sqrt(5));
+  for(var i=0;i<N;i++){
+    var y=1-(i/(N-1))*2;          /* -1 .. 1 */
+    var rad=Math.sqrt(1-y*y);
+    var th=gold*i;
+    verts.push([Math.cos(th)*rad, y, Math.sin(th)*rad]);
+  }
+  /* --- arêtes : relie chaque sommet à ses voisins proches --- */
+  var edges=[];
+  for(var i=0;i<N;i++){
+    /* distances aux autres */
+    var ds=[];
+    for(var j=0;j<N;j++) if(j!==i){
+      var dx=verts[i][0]-verts[j][0],dy=verts[i][1]-verts[j][1],dz=verts[i][2]-verts[j][2];
+      ds.push([dx*dx+dy*dy+dz*dz,j]);
+    }
+    ds.sort(function(a,b){return a[0]-b[0];});
+    for(var k=0;k<3;k++){           /* 3 voisins les plus proches */
+      var j=ds[k][1];
+      var key=i<j?i+'_'+j:j+'_'+i;
+      if(!edges._seen) edges._seen={};
+      if(!edges._seen[key]){ edges._seen[key]=1; edges.push([i,j]); }
+    }
+  }
+
+  var ang=0;
+  function rotY(p,a){ var c=Math.cos(a),s=Math.sin(a); return [p[0]*c+p[2]*s, p[1], -p[0]*s+p[2]*c]; }
+  function rotX(p,a){ var c=Math.cos(a),s=Math.sin(a); return [p[0], p[1]*c-p[2]*s, p[1]*s+p[2]*c]; }
+
+  function frame(){
+    ctx.clearRect(0,0,SZ,SZ);
+    var cx=SZ/2, cy=SZ/2, scale=SZ*0.425, persp=2.6;
+    /* projette tous les sommets */
+    var P=[];
+    for(var i=0;i<N;i++){
+      var p=rotX(rotY(verts[i],ang),ang*0.45);
+      var zc=p[2]+persp;
+      var f=persp/zc;                 /* perspective */
+      P.push({x:cx+p[0]*scale*f, y:cy-p[1]*scale*f, z:p[2], f:f});
+    }
+    /* arêtes (les plus profondes d'abord) */
+    var order=edges.slice().sort(function(a,b){
+      return (P[a[0]].z+P[a[1]].z)-(P[b[0]].z+P[b[1]].z);
+    });
+    for(var e=0;e<order.length;e++){
+      var a=P[order[e][0]], b=P[order[e][1]];
+      var depth=( (a.z+b.z)/2 +1)/2;        /* 0 arrière .. 1 avant */
+      var al=0.12+depth*0.55;
+      ctx.strokeStyle='rgba(59,164,240,'+al.toFixed(3)+')';
+      ctx.lineWidth=0.5+depth*1.0;
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    }
+    /* nœuds (avant par-dessus) */
+    var nodeOrder=[];
+    for(var i=0;i<N;i++) nodeOrder.push(i);
+    nodeOrder.sort(function(a,b){return P[a].z-P[b].z;});
+    for(var k=0;k<N;k++){
+      var i=nodeOrder[k], p=P[i];
+      var depth=(p.z+1)/2;
+      var r=(0.9+depth*2.0);
+      /* halo */
+      var grd=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,r*4);
+      grd.addColorStop(0,'rgba(120,196,250,'+(0.5+depth*0.45).toFixed(2)+')');
+      grd.addColorStop(1,'rgba(120,196,250,0)');
+      ctx.fillStyle=grd;
+      ctx.beginPath(); ctx.arc(p.x,p.y,r*4,0,6.283); ctx.fill();
+      /* cœur */
+      ctx.fillStyle='rgba(228,244,255,'+(0.55+depth*0.45).toFixed(2)+')';
+      ctx.beginPath(); ctx.arc(p.x,p.y,r,0,6.283); ctx.fill();
+    }
+    ang+=0.006;
+    if(!REDUCED) requestAnimationFrame(frame);
+  }
+  var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+  if(REDUCED){ ang=0.6; frame(); }   /* une seule frame, sphère figée sous un bel angle */
+  else frame();
 })();
- 
+
+/* ============================================================================
+   Réseau de nœuds en fond (ambiance discrète derrière le hero).
+   ============================================================================ */
 (function(){
-var cv = document.getElementById('nodes');
-if(!cv) return;
-var ctx = cv.getContext('2d');
-var W, H, pts, DPR = Math.min(window.devicePixelRatio||1, 2);
-var N = 54, LINK = 150;
-function resize(){
-W = cv.clientWidth; H = cv.clientHeight;
-cv.width = W*DPR; cv.height = H*DPR;
-ctx.setTransform(DPR,0,0,DPR,0,0);
-}
-function init(){
-resize(); pts = [];
-for(var i=0;i<N;i++){
-pts.push({x:Math.random()*W, y:Math.random()*H,
-vx:(Math.random()-0.5)*0.28, vy:(Math.random()-0.5)*0.28,
-r:Math.random()*1.4+0.7});
-}
-}
-function step(){
-ctx.clearRect(0,0,W,H);
-for(var i=0;i<N;i++){
-var a=pts[i];
-for(var j=i+1;j<N;j++){
-var b=pts[j], dx=a.x-b.x, dy=a.y-b.y, d=Math.sqrt(dx*dx+dy*dy);
-if(d<LINK){
-var al=(1-d/LINK)*0.22;  
-ctx.strokeStyle='rgba(59,164,240,'+al.toFixed(3)+')';
-ctx.lineWidth=0.5;
-ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-}
-}
-}
-for(var i=0;i<N;i++){
-var p=pts[i];
-p.x+=p.vx; p.y+=p.vy;
-if(p.x<0||p.x>W) p.vx*=-1;
-if(p.y<0||p.y>H) p.vy*=-1;
-ctx.fillStyle='rgba(120,180,230,0.35)';
-ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fill();
-}
-requestAnimationFrame(step);
-}
-window.addEventListener('resize', function(){ resize(); });
-init(); step();
+  var cv = document.getElementById('nodes');
+  if(!cv) return;
+  var ctx = cv.getContext('2d');
+  var W, H, pts, DPR = Math.min(window.devicePixelRatio||1, 2);
+  var N = 54, LINK = 150;
+  function resize(){
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W*DPR; cv.height = H*DPR;
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  function init(){
+    resize(); pts = [];
+    for(var i=0;i<N;i++){
+      pts.push({x:Math.random()*W, y:Math.random()*H,
+        vx:(Math.random()-0.5)*0.28, vy:(Math.random()-0.5)*0.28,
+        r:Math.random()*1.4+0.7});
+    }
+  }
+  function step(){
+    ctx.clearRect(0,0,W,H);
+    for(var i=0;i<N;i++){
+      var a=pts[i];
+      for(var j=i+1;j<N;j++){
+        var b=pts[j], dx=a.x-b.x, dy=a.y-b.y, d=Math.sqrt(dx*dx+dy*dy);
+        if(d<LINK){
+          var al=(1-d/LINK)*0.22;     /* plus discret que le logo */
+          ctx.strokeStyle='rgba(59,164,240,'+al.toFixed(3)+')';
+          ctx.lineWidth=0.5;
+          ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        }
+      }
+    }
+    for(var i=0;i<N;i++){
+      var p=pts[i];
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0||p.x>W) p.vx*=-1;
+      if(p.y<0||p.y>H) p.vy*=-1;
+      ctx.fillStyle='rgba(120,180,230,0.35)';
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,6.283); ctx.fill();
+    }
+    requestAnimationFrame(step);
+  }
+  window.addEventListener('resize', function(){ resize(); });
+  init(); step();
 })();
 </script>
 </body>
